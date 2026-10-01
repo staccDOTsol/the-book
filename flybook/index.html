@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>the book — self-serve</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{background:#08080a;color:#e8e6e0;font-family:monospace;max-width:700px;margin:40px auto;padding:0 16px}
+h2{color:#d4af37}
+input,select,button{background:#111;color:#4ade80;border:1px solid #333;padding:10px;font-family:monospace;font-size:14px;width:100%;margin:6px 0}
+button{cursor:pointer;border-color:#d4af37;color:#d4af37}button:hover{background:#1a1a0a}
+.log{background:#000;border:1px solid #222;padding:10px;height:220px;overflow-y:auto;font-size:12px;white-space:pre-wrap}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.stat{color:#d4af37}
+</style>
+</head>
+<body>
+<h2>THE BOOK — self-serve</h2>
+<p>got a token? got ETH or bags? this walks the chart.</p>
+<input id="key" type="password" placeholder="private key (stays in localStorage)">
+<input id="rpc" value="https://rpc.mainnet.chain.robinhood.com">
+<select id="chain"><option value="4663">robinhood (4663)</option></select>
+<input id="token" placeholder="token CA (0x…)">
+<div class="row"><button onclick="scan()">SCAN WALLET</button><button onclick="deployMachine()">DEPLOY MACHINE</button></div>
+<div class="row"><button onclick="walk()">WALK ▲</button><button onclick="stop()">STOP</button><button onclick="exitAll()">EXIT</button></div>
+<span class="stat" id="status">idle</span>
+<pre class="log" id="log">the book awaits…</pre>
+<script type="module" src="/runner.js"></script>
+</body>
+</html>

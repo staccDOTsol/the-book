@@ -1,0 +1,12 @@
+app = "the-book-self-serve"
+primary_region = "iad"
+[build]
+  builder = "paketobuildpacks/builder-jammy-base"
+[env]
+  PORT = "80"
+[[services]]
+  internal_port = 80
+  protocol = "tcp"
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80

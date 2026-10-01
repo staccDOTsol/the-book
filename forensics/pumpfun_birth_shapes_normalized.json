@@ -1,0 +1,1382 @@
+[
+ {
+  "symbol": "WSOS",
+  "mint": "8TC93eg35bVJShh7CAcoXNhDCKWnmsdLN39z9Ywkpump",
+  "mcap": 79468275,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "USDF",
+  "mint": "Gsdd61tLPizPrAzXyVnuDyJxLMDpcofm61LAnCXpump",
+  "mcap": 54358266,
+  "total_pools": 3,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "XBC",
+  "mint": "nLvHqjKGjzGwz5rrn91SDKaoxiVDbKXoMKw2jhcpump",
+  "mcap": 45068781,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "TROLL",
+  "mint": "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+  "mcap": 49309650,
+  "total_pools": 864,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Ban",
+  "mint": "9PR7nCP9DpcUotnDPVLUBUZKu5WAYkwrCUx9wDnSpump",
+  "mcap": 66295801,
+  "total_pools": 65,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 4,
+  "ladder_max": 1.0,
+  "ladder_min": 0.041
+ },
+ {
+  "symbol": "Fartcoin ",
+  "mint": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+  "mcap": 195279478,
+  "total_pools": 2522,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "PAID",
+  "mint": "98kfF7rmsg1QDUEoCqNE7g7M1FdrTt92TEp2CLzypump",
+  "mcap": 43813489,
+  "total_pools": 905,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Pnut ",
+  "mint": "2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump",
+  "mcap": 56568432,
+  "total_pools": 465,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "ALCH",
+  "mint": "HNg5PYJmtqcmzXrv6S9zP1CDKk5BgDuyFBxbvNApump",
+  "mcap": 57578170,
+  "total_pools": 255,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "CATE",
+  "mint": "Ai66LHZG9MCzg1WKdawwqduVAXpNDUuV8M3uyq5ppump",
+  "mcap": 88715869,
+  "total_pools": 1440,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "arc",
+  "mint": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump",
+  "mcap": 70313205,
+  "total_pools": 389,
+  "birth_pools_1h": 9,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "ANSEM",
+  "mint": "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump",
+  "mcap": 71064962,
+  "total_pools": 2334,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "INFERNOAI",
+  "mint": "HdBr8fUsSWtpTSaRtfEn7mSLBnunMqtpy9h2Ar4kpump",
+  "mcap": 30507248,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "DJT",
+  "mint": "67jyHWYtiLbhH4GD5jKxpVSpa2UAN7Sg2q276oaopump",
+  "mcap": 21886411,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "jellyjelly",
+  "mint": "FeR8VBqNRSUD5NtXAj2n3j1dAHkZHfyDktKuLXD4pump",
+  "mcap": 60826311,
+  "total_pools": 258,
+  "birth_pools_1h": 14,
+  "zl_pools_24h": 4,
+  "ladder_max": 1.01,
+  "ladder_min": 0.16
+ },
+ {
+  "symbol": "WWR",
+  "mint": "aw3xsvi5td17w85AQWYNQb1mDNySKUxqMksaNtBpump",
+  "mcap": 17428983,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "WOULD",
+  "mint": "J1Wpmugrooj1yMyQKrdZ2vwRXG5rhfx3vTnYE39gpump",
+  "mcap": 33664655,
+  "total_pools": 41,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "USDF",
+  "mint": "vcMzsDqaXhF2FNw7UjD6Nm1MPMyZyWJL5BxM9LUpump",
+  "mcap": 18871064,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "JEANPHIL",
+  "mint": "DwsZjBXfSyQTmaHHg6qkxfoACHaBQcFKJmCxEHUUpump",
+  "mcap": 16299284,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "AMERICA",
+  "mint": "5nVh1y1PUGkxdZFPycprHo5pHJWLWYXuZk8KirBkpump",
+  "mcap": 16279887,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "CIGR",
+  "mint": "3P6WB3hifQ9Z38Ja5qNuaETkgstJUWmP6vf58aYupump",
+  "mcap": 16164634,
+  "total_pools": 4,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 1.43,
+  "ladder_min": 1.426
+ },
+ {
+  "symbol": "WOTF",
+  "mint": "drLg3vH1p7KVK7YrXSNSPJxtGVDwLy3mHsVofT7pump",
+  "mcap": 14415216,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "goon",
+  "mint": "6RHXfQP5GwWoJLQ75Zyxf5u43AWcaBGpdtE4exMEpump",
+  "mcap": 12752749,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "e/acc",
+  "mint": "CbcyNo7m1amFWqEQm2m4PLv1UNvpcL3C1Ujm6AkzpKoU",
+  "mcap": 14637956,
+  "total_pools": 200,
+  "birth_pools_1h": 7,
+  "zl_pools_24h": 7,
+  "ladder_max": 1.22,
+  "ladder_min": 0.816
+ },
+ {
+  "symbol": "GOAT",
+  "mint": "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump",
+  "mcap": 19820067,
+  "total_pools": 517,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "pippin",
+  "mint": "Dfh5DzRgSvvCFDoYc2ciTkMrbDfRKybA4SoFbPmApump",
+  "mcap": 19317525,
+  "total_pools": 375,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 2,
+  "ladder_max": 9.57,
+  "ladder_min": 2.125
+ },
+ {
+  "symbol": "CHILLGUY",
+  "mint": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
+  "mcap": 14047234,
+  "total_pools": 445,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Bert",
+  "mint": "HgBRWfYxEfvPhtqkaeymCQtHCrKE46qQ43pKe8HCpump",
+  "mcap": 16129470,
+  "total_pools": 129,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "WOAF",
+  "mint": "6CYzB66N4WVnFmcAbP3icNzaLK3AHUVyWPezc8fpump",
+  "mcap": 10431836,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Buttcoin",
+  "mint": "Cm6fNnMk7NfzStP9CZpsQA2v3jjzbcYGAxdJySmHpump",
+  "mcap": 12530557,
+  "total_pools": 475,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "MANIFEST",
+  "mint": "BCdwQBAn8dYB5YjTsoB6TdHAWokxv28k2oZUodERpump",
+  "mcap": 12014945,
+  "total_pools": 89,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "ECTF",
+  "mint": "jpDJz9E7qYaDZoPxCXwXWFsHT2iCcFnwRoNX1QJpump",
+  "mcap": 9646723,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "TripleT",
+  "mint": "J8PSdNP3QewKq2Z1JJJFDMaqF7KcaiJhR7gbr5KZpump",
+  "mcap": 9781061,
+  "total_pools": 428,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "CATE",
+  "mint": "wpWU8ZB7Z1J4x2trJwzACetcJZtBv7psxarX7MHpump",
+  "mcap": 8906666,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Clash",
+  "mint": "6nR8wBnfsmXfcdDr1hovJKjvFQxNSidN6XFyfAFZpump",
+  "mcap": 9907492,
+  "total_pools": 40,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 3.32,
+  "ladder_min": 3.319
+ },
+ {
+  "symbol": "WEPE",
+  "mint": "EL6Urf21PoPesMrbYSRc1yqqHjhk6DGUR63VZDmmpump",
+  "mcap": 8581690,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "AVA",
+  "mint": "DKu9kykSfbN5LBfFXtNNDPaX35o4Fv6vJ9FKk7pZpump",
+  "mcap": 9814264,
+  "total_pools": 148,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "aura",
+  "mint": "DtR4D9FtVoTX2569gaL837ZgrB6wNjj6tkmnX9Rdk9B2",
+  "mcap": 9492479,
+  "total_pools": 331,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "YAP",
+  "mint": "YKZsgwVKsggBPms4foygjJPazzKZtTNrXZW2XRVpump",
+  "mcap": 26308743,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "USWR",
+  "mint": "fNNBiywHm5hoCNqhdPsyTY7H8hEYAdVWANnH2zUpump",
+  "mcap": 25043809,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "TEXTIT",
+  "mint": "udPEzBjbGMzYZbuLtByqLYhc4TEs6EebG8R7fwdpump",
+  "mcap": 24732685,
+  "total_pools": 3,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "XBC",
+  "mint": "oQWh9i5FqHf75HCjs5KjbQqgjBYq4inyZo238sZpump",
+  "mcap": 8072053,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Nasduck",
+  "mint": "3yoUJZa1Xyojb7r1JaqCmRF4MqUUnBFHyfHKcPVHpump",
+  "mcap": 7967145,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "MNSRY",
+  "mint": "1xdtu7y3LkkrVCAbm5KGKfYzq1qgKhxxk5AaJBqpump",
+  "mcap": 7061107,
+  "total_pools": 16,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 1,
+  "ladder_max": 3.69,
+  "ladder_min": 3.687
+ },
+ {
+  "symbol": "CALI",
+  "mint": "8k4sBtEeK4pf26noKqApv8NBTnuSJcbdwpKYknk5PbAA",
+  "mcap": 6855968,
+  "total_pools": 10,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "BLACKCOIN",
+  "mint": "Gqdw9DgDQuPekAwcvLvK7wgLGohGQntP45nVeAsZpump",
+  "mcap": 6560296,
+  "total_pools": 4,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "OURA",
+  "mint": "Xsg5wAwmiHVopEZpYynDu352fxFbrT1VyNoyncTpump",
+  "mcap": 6329549,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "TBB",
+  "mint": "42cXQvAAr7hcPBPWAS4ocVtDyeJ4Fa6gRR2uG4gppump",
+  "mcap": 6703314,
+  "total_pools": 38,
+  "birth_pools_1h": 4,
+  "zl_pools_24h": 2,
+  "ladder_max": 2.77,
+  "ladder_min": 0.057
+ },
+ {
+  "symbol": "GBACK",
+  "mint": "Fh7mLxtPAysdvHcMcJ37A3vc6WvBVh7JVDwxmwk6pump",
+  "mcap": 5693977,
+  "total_pools": 10,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "PUMPCADE",
+  "mint": "Eg2ymQ2aQqjMcibnmTt8erC6Tvk9PVpJZCxvVPJz2agu",
+  "mcap": 8462349,
+  "total_pools": 63,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "VINE",
+  "mint": "6AJcP7wuLwmRYLBNbi825wgguaPsWzPBEHcHndpRpump",
+  "mcap": 7772102,
+  "total_pools": 554,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "swarms",
+  "mint": "74SBV4zDXxTRgv1pEMoECskKBkZHc2yGPnc7GYVepump",
+  "mcap": 8346795,
+  "total_pools": 285,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 2.4,
+  "ladder_min": 2.404
+ },
+ {
+  "symbol": "OURA",
+  "mint": "DR1toynZrj2FBjS2rdh6ovXqbGZCKPvkfugjgnRopump",
+  "mcap": 4749550,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "crypto",
+  "mint": "4ikwYoNvoGEwtMbziUyYBTz1zRM6nmxspsfw9G7Bpump",
+  "mcap": 5151158,
+  "total_pools": 89,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "CLAW",
+  "mint": "739dnZEG4yaBWFsY8L8ZwrfhGG6dhtCSercW8Umspump",
+  "mcap": 5802253,
+  "total_pools": 427,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 3,
+  "ladder_max": 0.94,
+  "ladder_min": 0.105
+ },
+ {
+  "symbol": "CINO",
+  "mint": "BUUB7DpQT1mcTrs55oXawgEbxm5khAozsbmyhMdRpump",
+  "mcap": 4520712,
+  "total_pools": 5,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "jobcoin",
+  "mint": "AyrQpt5xsVYiN4BqgZdd2tZJAWswT9yLUZmP1jKqpump",
+  "mcap": 5240991,
+  "total_pools": 31,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 5,
+  "ladder_max": 3.24,
+  "ladder_min": 0.149
+ },
+ {
+  "symbol": "Chonketha",
+  "mint": "HcfnJxLov6tY8i1dq9uYRRZKCvxADPpovcfkyXzdpump",
+  "mcap": 4490303,
+  "total_pools": 14,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "ECTF",
+  "mint": "MHdo6c71E35MB96NQoQHGNuChhwtmnKK4N7sP77pump",
+  "mcap": 5894772,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "UFD",
+  "mint": "eL5fUxj2J4CiQsmW85k5FG9DvuQjjUoBHoQBi2Kpump",
+  "mcap": 8326847,
+  "total_pools": 279,
+  "birth_pools_1h": 8,
+  "zl_pools_24h": 3,
+  "ladder_max": 9.74,
+  "ladder_min": 2.641
+ },
+ {
+  "symbol": "COYT",
+  "mint": "4u7KijCYFhh9hkArq41ysg4CfFns7Pv2jUKUoABCpump",
+  "mcap": 4213343,
+  "total_pools": 7,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "WOAR",
+  "mint": "uL7tn5so4AzesQwoUd1T8VpweJ7FprDXyquEJkXpump",
+  "mcap": 4372437,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "fone",
+  "mint": "CTPoyCwkjMvoJwU4xvZZqoD8tiYk6yDchySiN5gGpump",
+  "mcap": 5927660,
+  "total_pools": 232,
+  "birth_pools_1h": 8,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Jimothy",
+  "mint": "Ge87EtsjwRQbHaqQmKRno69RFTwh9bfSsm99XNxTpump",
+  "mcap": 5471883,
+  "total_pools": 295,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "USDF",
+  "mint": "DRMnFyekQiCTMrajtgsTycqp4ie6r1tZnh6qpAGjpump",
+  "mcap": 3934189,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "ALTSZN",
+  "mint": "CcLd8HTAKLWtQHatqPwBQjtuCA72FNB9E1ckRTEzpump",
+  "mcap": 4426693,
+  "total_pools": 20,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "COLLECT",
+  "mint": "nDZknLvfFRp5rgUHdzTrQsmSY5NKzoavqdLjSHVpump",
+  "mcap": 3611411,
+  "total_pools": 17,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 2,
+  "ladder_max": 0.96,
+  "ladder_min": 0.962
+ },
+ {
+  "symbol": "nub",
+  "mint": "4QsNTBKwHgyYUUHq9tDzk1CCVu7y5hK7z3GE9R36pump",
+  "mcap": 3608881,
+  "total_pools": 12,
+  "birth_pools_1h": 8,
+  "zl_pools_24h": 4,
+  "ladder_max": 0.99,
+  "ladder_min": 0.854
+ },
+ {
+  "symbol": "Ww3",
+  "mint": "7m2TUkpPZCScBhPJnGjWjbh75KkDNnwAdd7i74m8awad",
+  "mcap": 4263891,
+  "total_pools": 36,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.03,
+  "ladder_min": 0.033
+ },
+ {
+  "symbol": "dreams",
+  "mint": "GMzuntWYJLpNuCizrSR7ZXggiMdDzTNiEmSNHHunpump",
+  "mcap": 4138298,
+  "total_pools": 75,
+  "birth_pools_1h": 8,
+  "zl_pools_24h": 3,
+  "ladder_max": 3.63,
+  "ladder_min": 0.969
+ },
+ {
+  "symbol": "ELON",
+  "mint": "GY9mZfyPpxXxBXBxS2hB2XjhP3kfUsywTvgveozxpump",
+  "mcap": 3454911,
+  "total_pools": 19,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 2,
+  "ladder_max": 1.14,
+  "ladder_min": 0.399
+ },
+ {
+  "symbol": "ALLINDOGE",
+  "mint": "HyDKNdnhZNVYQMruBevbNsUWruA9STmAQrS4srXApump",
+  "mcap": 3425562,
+  "total_pools": 6,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "YAP",
+  "mint": "jLz71QZfjnZZMLjUaCBw7KmUyftkkNq8NkWi2u9dyap",
+  "mcap": 3497133,
+  "total_pools": 21,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.88,
+  "ladder_min": 0.878
+ },
+ {
+  "symbol": "Mewania",
+  "mint": "EoHTQS3Cka18r5tPJC5addT2WLqmCNfWNwPRcWYGpump",
+  "mcap": 3868841,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "GOLDEN",
+  "mint": "TL6zbcgY9Smg8UF11CQ1VHW5V3pwYgTkrU6sitepump",
+  "mcap": 3061550,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "USPR",
+  "mint": "fP2UhwtcNSYUHFTLJVoMnjYp3Hgfd7AqaAXhTDEpump",
+  "mcap": 3048478,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "JEANPHIL",
+  "mint": "GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump",
+  "mcap": 4379228,
+  "total_pools": 814,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "XCAT",
+  "mint": "8PCaW49TPLBkvajXsgdxsHw3eRTTKrfRPifmhowwpump",
+  "mcap": 3037303,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "WNTV",
+  "mint": "2GXmB95pGD3pHV4mzNq7YsmyiEmVYWQLptbwYqgdpump",
+  "mcap": 3240761,
+  "total_pools": 10,
+  "birth_pools_1h": 6,
+  "zl_pools_24h": 5,
+  "ladder_max": 0.96,
+  "ladder_min": 0.223
+ },
+ {
+  "symbol": "GOAF",
+  "mint": "WYP4k8CdgzpQvaNXR2QUoPG5UAqS4y6ggFy6Rbppump",
+  "mcap": 3195193,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "XERIS",
+  "mint": "9ezFthWrDUpSSeMdpLW6SDD9TJigHdc4AuQ5QN5bpump",
+  "mcap": 3155031,
+  "total_pools": 14,
+  "birth_pools_1h": 4,
+  "zl_pools_24h": 3,
+  "ladder_max": 0.06,
+  "ladder_min": 0.033
+ },
+ {
+  "symbol": "CATCOIN",
+  "mint": "9i3NFMa9pqR3suCUhyX3nQE1dy6i5wXafDtppUxYpump",
+  "mcap": 2875865,
+  "total_pools": 6,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 2,
+  "ladder_max": 1.2,
+  "ladder_min": 0.75
+ },
+ {
+  "symbol": "Cupsey",
+  "mint": "6NwarBvDkXhByqVp2Qkq5i9XbtA2B3Bwe8SWGu9vpump",
+  "mcap": 6486668,
+  "total_pools": 168,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 2,
+  "ladder_max": 1.21,
+  "ladder_min": 0.624
+ },
+ {
+  "symbol": "AOR",
+  "mint": "bHdj9yHAs5WdRuTgt5c4kwJpkF6bRixnsp3v2wrpump",
+  "mcap": 2896171,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "GEOM",
+  "mint": "6dX5M8DY6VTFtVRX5yzWn9RE4MkJTyoAVbAodk6cpump",
+  "mcap": 2885180,
+  "total_pools": 7,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "pwease",
+  "mint": "CniPCE4b3s8gSUPhUiyMjXnytrEqUrMfSsnbBjLCpump",
+  "mcap": 3863492,
+  "total_pools": 173,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 2,
+  "ladder_max": 1.45,
+  "ladder_min": 0.311
+ },
+ {
+  "symbol": "$NRG",
+  "mint": "9f52wiW2zrt2497HroMHtZtuj7VzWu4AsEusmW3pump",
+  "mcap": 2723959,
+  "total_pools": 8,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 2,
+  "ladder_max": 0.27,
+  "ladder_min": 0.145
+ },
+ {
+  "symbol": "MISTAKE",
+  "mint": "HKZDfZnkHZxd9agRDNPyDv4iT6LmAurJnpRtj9wpump",
+  "mcap": 2715979,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "FRIED",
+  "mint": "3LaXmnVQxMMArywUBJjGA5EKbUdJ17PFor3M5oeupump",
+  "mcap": 2556726,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "WOJAK",
+  "mint": "8J69rbLTzWWgUJziFY8jeu5tDwEPBwUz4pKBMr5rpump",
+  "mcap": 2768041,
+  "total_pools": 570,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "RAGEGUY",
+  "mint": "GvV7sFu6FHJsSVXfpG7xqFnWar3c7YkcC74rqe7Bpump",
+  "mcap": 2430146,
+  "total_pools": 26,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.11,
+  "ladder_min": 0.113
+ },
+ {
+  "symbol": "HODL",
+  "mint": "Hh3oTaqDCKKfdBgsQEvxp9sUwyNf8x9qmKqEMLBWpump",
+  "mcap": 2761619,
+  "total_pools": 122,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 3,
+  "ladder_max": 1.52,
+  "ladder_min": 0.043
+ },
+ {
+  "symbol": "retire",
+  "mint": "zGh48JtNHVBb5evgoZLXwgPD2Qu4MhkWdJLGDAupump",
+  "mcap": 2897635,
+  "total_pools": 101,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "YzY",
+  "mint": "4NBTf8PfLH4oLFnwf3knv46FY9i5oXjDxffCetXRpump",
+  "mcap": 2818995,
+  "total_pools": 92,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 2,
+  "ladder_max": 0.42,
+  "ladder_min": 0.218
+ },
+ {
+  "symbol": "FWOG",
+  "mint": "A8C3xuqscfmyLrte3VmTqrAq8kgMASius9AFNANwpump",
+  "mcap": 6615938,
+  "total_pools": 660,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "USDFA",
+  "mint": "XvkcawpgMKQg3UKvQsJcvRbPMnymD8kWuoKKWgXpump",
+  "mcap": 2314321,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "SAI",
+  "mint": "gzhu5SgsGKBf9MabUZ6ikhtWwdiX3XAdB6wJwLFpump",
+  "mcap": 2211252,
+  "total_pools": 2,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Artilect",
+  "mint": "Ch1Kzi24hWy5Cd3mKhx8FHGHqPjYjAmRNEtwBbKGpump",
+  "mcap": 2170797,
+  "total_pools": 3,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "RAIN",
+  "mint": "3iC63FgnB7EhcPaiSaC51UkVweeBDkqu17SaRyy2pump",
+  "mcap": 2137354,
+  "total_pools": 10,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 1,
+  "ladder_max": 4.84,
+  "ladder_min": 4.845
+ },
+ {
+  "symbol": "parafactual",
+  "mint": "CvUX4G2tzq7J3ECmNvWZLayZYV6KpgQp6SJ5K8Uvsu5g",
+  "mcap": 2119691,
+  "total_pools": 6,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.12,
+  "ladder_min": 0.12
+ },
+ {
+  "symbol": "ALPHA",
+  "mint": "3wtGGWZ8wLWW6BqtC5rxmkHdqvM62atUcGTH4cw3pump",
+  "mcap": 2035690,
+  "total_pools": 7,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 3,
+  "ladder_max": 0.33,
+  "ladder_min": 0.101
+ },
+ {
+  "symbol": "POCK",
+  "mint": "76r29NpnRW8PAxpnSnVBFcZPUcukgvno1Kkiysg8pump",
+  "mcap": 2016497,
+  "total_pools": 4,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.02,
+  "ladder_min": 0.024
+ },
+ {
+  "symbol": "TOAD",
+  "mint": "A13oRB9FFaiUjfi6LdCg6p9ka1u8SfGkUFs4SKvPpump",
+  "mcap": 2257627,
+  "total_pools": 215,
+  "birth_pools_1h": 8,
+  "zl_pools_24h": 8,
+  "ladder_max": 12.78,
+  "ladder_min": 5.066
+ },
+ {
+  "symbol": "BP",
+  "mint": "3B1ijcocM5EDga6XxQ7JLW7weocQPWWjuhBYG8Vepump",
+  "mcap": 2219603,
+  "total_pools": 44,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 4,
+  "ladder_max": 1.72,
+  "ladder_min": 0.121
+ },
+ {
+  "symbol": "Percolator",
+  "mint": "8PzFWyLpCVEmbZmVJcaRTU5r69XKJx1rd7YGpWvnpump",
+  "mcap": 2373777,
+  "total_pools": 95,
+  "birth_pools_1h": 7,
+  "zl_pools_24h": 19,
+  "ladder_max": 1.11,
+  "ladder_min": 0.041
+ },
+ {
+  "symbol": "BITTY",
+  "mint": "dTzEP9JU2NRDPuWtM32gaVKip2fTHBqjheU1APBpump",
+  "mcap": 1997031,
+  "total_pools": 22,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "MASK",
+  "mint": "H36dUGA8xfCfqs6F1TnVL66iz2QrU1mFkEyG5Scpump",
+  "mcap": 1815907,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "LMAO!",
+  "mint": "H74CYmXgMkYHYuSRsZt6RJb4NYp2u72Vw8BS5huApump",
+  "mcap": 2135544,
+  "total_pools": 655,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Fapcoin",
+  "mint": "8vGr1eX9vfpootWiUPYa5kYoGx9bTuRy2Xc4dNMrpump",
+  "mcap": 2196550,
+  "total_pools": 86,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 5,
+  "ladder_max": 0.13,
+  "ladder_min": 0.021
+ },
+ {
+  "symbol": "WADDLESLIV",
+  "mint": "CgozZUAkJXYYBEiCmbeECxkQzVihahtncDho7pX9pump",
+  "mcap": 1760461,
+  "total_pools": 1,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "OTC",
+  "mint": "MukLDtJ8Cx9DxLbeyLRSWPSposTMWuwHANbuaudpump",
+  "mcap": 3714962,
+  "total_pools": 198,
+  "birth_pools_1h": 4,
+  "zl_pools_24h": 2,
+  "ladder_max": 2.19,
+  "ladder_min": 1.006
+ },
+ {
+  "symbol": "WSOLP",
+  "mint": "GvUCjmWSXA5hrTh9smmNA1AU55YCtP9mDLQcrKA1pump",
+  "mcap": 1844805,
+  "total_pools": 24,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "A47",
+  "mint": "CN162nCPpq3DxPCyKLbAvEJeB1aCxsnVTEG4ZU8vpump",
+  "mcap": 1697929,
+  "total_pools": 15,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "GATO",
+  "mint": "HsprHxBRgiVaQdRf3TnKNuZZtaX9JUSPgMFdAkk6pump",
+  "mcap": 1681888,
+  "total_pools": 5,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "MOBY",
+  "mint": "Cy1GS2FqefgaMbi45UunrUzin1rfEmTUYnomddzBpump",
+  "mcap": 2025440,
+  "total_pools": 167,
+  "birth_pools_1h": 12,
+  "zl_pools_24h": 7,
+  "ladder_max": 16.16,
+  "ladder_min": 2.68
+ },
+ {
+  "symbol": "DREGG",
+  "mint": "XkeTXo1125vz5H9svJpGiw4JvLbN8VmMu9cmMvspump",
+  "mcap": 1724702,
+  "total_pools": 24,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.04,
+  "ladder_min": 0.037
+ },
+ {
+  "symbol": "PYTHIA",
+  "mint": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+  "mcap": 1997067,
+  "total_pools": 91,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "ZAUTH",
+  "mint": "DNhQZ1CE9qZ2FNrVhsCXwQJ2vZG8ufZkcYakTS5Jpump",
+  "mcap": 1846772,
+  "total_pools": 64,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.02,
+  "ladder_min": 0.017
+ },
+ {
+  "symbol": "biketyson",
+  "mint": "CbyTNf7UPzvewHh4Zp6umogM2RWahhmGRJWLJnPwpump",
+  "mcap": 1783606,
+  "total_pools": 813,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "Apple",
+  "mint": "8sfkkCn14rR4Sqa7dkFCXuuxVJbVyECS61yRBNN3pump",
+  "mcap": 1401232,
+  "total_pools": 2,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "SAAR",
+  "mint": "8H5yfL1GoDETLDaLYZzrgQuZs37eiKJjdfP21b6ypump",
+  "mcap": 1400828,
+  "total_pools": 4,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "gork",
+  "mint": "76EDL5qNcte2ZH29quTaFzagXjWAEY83CATEjyA6pump",
+  "mcap": 1555519,
+  "total_pools": 31,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "PAX",
+  "mint": "JE8zmsKRivXggZsJxXHBdCkako85YawNtU5hqS4upump",
+  "mcap": 1368473,
+  "total_pools": 5,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "QST",
+  "mint": "AUuCEHQ7sm2i5GmaHrpE961voWcTY8U6mgrkhcV7pump",
+  "mcap": 1530025,
+  "total_pools": 31,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 3,
+  "ladder_max": 5.29,
+  "ladder_min": 1.206
+ },
+ {
+  "symbol": "BURNIE",
+  "mint": "CGEDT9QZDvvH5GmVkWJH2BXiMJqMJySC9ihWyr7Spump",
+  "mcap": 1588205,
+  "total_pools": 125,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 7,
+  "ladder_max": 5.3,
+  "ladder_min": 0.953
+ },
+ {
+  "symbol": "ZReaL",
+  "mint": "GnFMf6JVRhAqPbA9r8yW16xycynKNkXfbaYbusLEpump",
+  "mcap": 1160734,
+  "total_pools": 15,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 5,
+  "ladder_max": 4.17,
+  "ladder_min": 0.884
+ },
+ {
+  "symbol": "GTA 6 Coin",
+  "mint": "EaxAUcXxNnVwcqm2BBocbows7D1XVY2Q63V38NEypump",
+  "mcap": 1140366,
+  "total_pools": 27,
+  "birth_pools_1h": 2,
+  "zl_pools_24h": 5,
+  "ladder_max": 0.55,
+  "ladder_min": 0.048
+ },
+ {
+  "symbol": "GOLD",
+  "mint": "LRxbtkvPfpctgR6MS52MAwtobrCCY9KiJgKMmpPpump",
+  "mcap": 1264697,
+  "total_pools": 7,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.2,
+  "ladder_min": 0.199
+ },
+ {
+  "symbol": "HAPPY",
+  "mint": "68fn2tLABKmS7VA9Eaz3n6RfoXM3iBWUACckT9dwpump",
+  "mcap": 1262730,
+  "total_pools": 19,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "TCG",
+  "mint": "DLGRpmkMGr7J4KD1xR5x2XjaGeQH64PLFQkyxNNSpump",
+  "mcap": 1325341,
+  "total_pools": 31,
+  "birth_pools_1h": 8,
+  "zl_pools_24h": 8,
+  "ladder_max": 8.41,
+  "ladder_min": 0.576
+ },
+ {
+  "symbol": "Holdoween",
+  "mint": "BxftAowY2dVa2h9KMqDTPk4oMxzU9k6uVbZuoorXpump",
+  "mcap": 1122718,
+  "total_pools": 4,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "BABYCATE",
+  "mint": "DDVUsN8sDFxbaX6gNBoD44kjZhFETWJnwAn4EX1dpump",
+  "mcap": 1101336,
+  "total_pools": 16,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 2,
+  "ladder_max": 0.6,
+  "ladder_min": 0.039
+ },
+ {
+  "symbol": "67",
+  "mint": "9AvytnUKsLxPxFHFqS6VLxaxt5p6BhYNr53SD2Chpump",
+  "mcap": 1657682,
+  "total_pools": 160,
+  "birth_pools_1h": 4,
+  "zl_pools_24h": 5,
+  "ladder_max": 16.73,
+  "ladder_min": 0.064
+ },
+ {
+  "symbol": "black",
+  "mint": "5PwsE1yXAvANamqbYwM6zoWrYkNw8RZ74TZSsxnGu4vq",
+  "mcap": 1422764,
+  "total_pools": 60,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 2,
+  "ladder_max": 1.75,
+  "ladder_min": 0.917
+ },
+ {
+  "symbol": "KINS",
+  "mint": "Tqj8yFmagrg7oorpQkVGYR52r96RFTamvWfth9bpump",
+  "mcap": 1146877,
+  "total_pools": 97,
+  "birth_pools_1h": 1,
+  "zl_pools_24h": 0,
+  "ladder_max": 0,
+  "ladder_min": 0
+ },
+ {
+  "symbol": "SQUIRE",
+  "mint": "EN2nnxrg8uUi6x2sJkzNPd2eT6rB9rdSoQNNaENA4RZA",
+  "mcap": 1329661,
+  "total_pools": 83,
+  "birth_pools_1h": 3,
+  "zl_pools_24h": 1,
+  "ladder_max": 0.01,
+  "ladder_min": 0.005
+ },
+ {
+  "symbol": "TRENCHER",
+  "mint": "8ncucXv6U6epZKHPbgaEBcEK399TpHGKCquSt4RnmX4f",
+  "mcap": 1015500,
+  "total_pools": 86,
+  "birth_pools_1h": 5,
+  "zl_pools_24h": 5,
+  "ladder_max": 5.43,
+  "ladder_min": 0.777
+ },
+ {
+  "symbol": "RKC",
+  "mint": "7HgfXftRBBqsYtAEYcqjGLQrNJLL6Tww9ek4rE3Apump",
+  "mcap": 1644731,
+  "total_pools": 118,
+  "birth_pools_1h": 31,
+  "zl_pools_24h": 22,
+  "ladder_max": 6.25,
+  "ladder_min": 0.747
+ }
+]

@@ -1,0 +1,10 @@
+import { Connection, PublicKey } from "@solana/web3.js";
+import { OnlinePumpAmmSdk } from "@pump-fun/pump-swap-sdk";
+const conn = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`, "confirmed");
+const amm = new OnlinePumpAmmSdk(conn);
+const POOL = new PublicKey("49PEdr3Jbbm5544rtsiwS7y3LGXhk7uLRJi9FpRamkPA");
+const st = await amm.swapSolanaState(POOL, PublicKey.default);
+const price = (Number(st.poolQuoteAmount) / 1e9) / (Number(st.poolBaseAmount) / 1e6);
+const mcap = price * 1e9 * 180;
+const mult = price / 2.36e-8;
+console.log(`mcap $${mcap.toFixed(0)} | ×${mult.toFixed(1)} from birth | pool: ${Number(st.poolBaseAmount)/1e6}M tok / ${Number(st.poolQuoteAmount)/1e9} WSOL`);

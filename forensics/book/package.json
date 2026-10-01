@@ -1,0 +1,12 @@
+{
+  "name": "the-book",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@pump-fun/pump-sdk": "^2.0.0",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
+    "bn.js": "^5.2.5",
+    "tweetnacl": "^1.0.3"
+  }
+}

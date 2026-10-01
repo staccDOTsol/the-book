@@ -1,0 +1,42 @@
+[
+ {
+  "block": 68403193,
+  "tx": "0x29cd05faa177f1482fe23b20e0f1bf8ed3be291a2e728eae114d928fa6c3e8ff",
+  "hook": "f0b6",
+  "poolId": "0xd1544a8ed95914869166d7d0ccdc8ddbc83d684b70b42d1ae5eea1e523d2928c",
+  "c0": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+  "c1": "0xf51fb54de60f6e16252e852a5ed0e60b8307606a",
+  "fee": 0,
+  "tickSp": 1
+ },
+ {
+  "block": 68417046,
+  "tx": "0x26b8ae08a3dcb332e51822ee9a797e127a8d863c365dad15fe381074f310e13a",
+  "hook": "a8a2",
+  "poolId": "0xcc2a7035dcb7843c92226c92d56d39c8fc89322eeb5dc62bf7d137e410d52b9b",
+  "c0": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+  "c1": "0xfe09fb328be1c286b4f597ed34764b7472ae72c5",
+  "fee": 0,
+  "tickSp": 1
+ },
+ {
+  "block": 72828016,
+  "tx": "0xceca381422592d26e4f8d1e704b2fc9190d0a59496a03166cb2315d67724b6f3",
+  "hook": "e337",
+  "poolId": "0x8dd0f6e90b5ba21e184d082b7c7c54bbe7cfd6e8a1a8004bfcd0d3a529963c59",
+  "c0": "0x006d2d9e65f847e8b5f5053c9eb3a7824ec7dfa3",
+  "c1": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+  "fee": 0,
+  "tickSp": 1
+ },
+ {
+  "block": 72830705,
+  "tx": "0x45fb5a479ce4b0c55311b160d97d580ab6d392b5091dd2a60627915a0d2e9e45",
+  "hook": "e337",
+  "poolId": "0xe747f2522bcc301f1bc0053578dc11c5714fe0d9e40d20af1f3cb594a03d51cc",
+  "c0": "0x006d2d9e65f847e8b5f5053c9eb3a7824ec7dfa3",
+  "c1": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+  "fee": 0,
+  "tickSp": 2
+ }
+]
