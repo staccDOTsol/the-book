@@ -1,13 +1,17 @@
-# Hookless Pons X/Q prototype
+# Hookless Pons X/Q launch cursor
 
-This directory contains an **undeployed** custom `Q` ERC-20 and a launch cursor
-for ETH-paired Pons tokens `X`. Q can be launched through Uniswap's
-existing-token LiquidityLauncher route into a separate, locked Q/ETH pool.
-For each eligible Pons X, the cursor creates **one hookless Uniswap v4 X/Q
+This directory contains the deployed custom `Q` ERC-20 and a launch cursor
+for ETH-paired Pons tokens `X`. The corrected Q was launched through the
+Pools.xyz existing-token LiquidityLauncher route into a locked Q/ETH pool,
+then paired with USDG in a separate Uniswap v3 transfer-trigger pool.
+For each eligible Pons X, the cursor is designed to create **one hookless Uniswap v4 X/Q
 pool with three Q-only LP positions**. One static pool fee is selected from
-5% through 50% and remains fixed for that X. No Q, executor, inspector, or
-router from this plan has been deployed, and no live transaction was sent
-while building this prototype.
+5% through 50% and remains fixed for that X. Q, the executor, inspector, and
+router are deployed on Robinhood. The corrected Q is activated and the Fly
+keeper is live in trader-paid mode. At the October 3 18:59 UTC check, four
+launches were queued and no executor step had mined. The local writer remains
+stopped. See the [live deployment record](live-deployment.md) for the current
+address, receipts, and distinction from earlier Q deployments.
 
 ## Opening a pool
 
@@ -29,10 +33,12 @@ while building this prototype.
    minted Q before the call completes. A failed open rolls the issuance back.
    A hard ceiling of ten times the initial Q supply rejects an opening that
    lacks room for all three mints; it remains retryable after later burns.
-4. A direct EOA Q transfer with sufficient gas may trigger one cursor step.
-   `Q.processNext()` is the permissionless fallback. The caller pays that
-   transaction's gas; internal settlement transfers do not recursively run
-   the cursor. An unconfigured or failed launch remains retryable.
+4. A Q transfer involving the bound canonical Q/USDG v3 pool attempts one
+   ready cursor step. The v3 trader pays that transaction's gas; internal
+   settlement transfers do not recursively run the cursor. `Q.processNext()`
+   remains the permissionless fallback, but the live Fly keepers do not call
+   it in trader-paid mode. Generic Q/ETH v4 trades do not trigger a step. An
+   unconfigured or failed launch remains retryable.
 
 The price scale is deliberately separate from the position size:
 `p0 = (1% of current Q supply) / X totalSupply` in raw token units. Reducing
@@ -173,7 +179,8 @@ In the full-cycle fork test, the three `Q.processNext()` exits used
 current isolated measured gas figure for the three-position open; do not use
 an older one-position gas result for it. These tests establish transaction
 mechanics, not Q demand, fair X/Q pricing, fee income, or a positive
-cash return. No live transaction was broadcast.
+cash return. See the live deployment record for transactions sent after these
+tests.
 
 For historical launch cadence and earlier strategy assumptions, see
 [the strategy record](../record/160-pons-every-launch-pool-plan.md); its

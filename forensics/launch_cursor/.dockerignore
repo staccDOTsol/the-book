@@ -1,0 +1,11 @@
+*
+!pons_*.py
+!fly/
+fly/*
+!fly/Dockerfile
+!fly/fly.toml
+!fly/entrypoint.py
+!fly/requirements.txt
+!fly/runtime-standby.json
+!fly/runtime-live.json
+!fly/runtime-trader-paid.json

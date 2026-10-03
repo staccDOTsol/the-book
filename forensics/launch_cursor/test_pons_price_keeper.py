@@ -41,10 +41,12 @@ def launch(phase: int):
             False, phase, 0, 0, 0, True)
 
 
-def log(block: int, token: str):
+def log(block: int, token: str, pair_token: str = keeper.ZERO):
     word = "0x" + token[2:].rjust(64, "0")
+    pair_word = pair_token[2:].rjust(64, "0")
     return {"address": watch.PONS_FACTORY,
             "topics": [watch.TOKEN_LAUNCHED, word, word, word],
+            "data": "0x" + pair_word + f"{1:064x}" + f"{2:064x}",
             "blockNumber": hex(block), "transactionIndex": "0x0", "logIndex": "0x0",
             "blockHash": "0x" + f"{block:064x}"}
 
@@ -284,6 +286,110 @@ class KeeperTests(unittest.TestCase):
         oversized[2] = (plan.max_quote_in[0] + 1, *plan.max_quote_in[1:])
         self.assertFalse(keeper.existing_config_safe(None, bindings(), plan, tuple(oversized), 100))
 
+    def test_confirmed_plan_journal_skips_churn_and_detects_replacement(self):
+        first = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                     10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        later = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                     10**18, 2 * 10**18, 105, keeper.PlanSettings())
+        changed = keeper.plan_position(X, Q_LOW, 10**27, 2 * 10**27,
+                                       10**18, 2 * 10**18, 105, keeper.PlanSettings())
+        tx_hash = "0x" + "aa" * 32
+        config = first.abi_config()
+        topic_token = "0x" + X[2:].rjust(64, "0")
+
+        class ConfigRpc(LogRpc):
+            def __init__(self):
+                super().__init__(head=12)
+                self.now = 105
+                self.visible = (config[0], config[3], config[6])
+                self.config_logs = []
+
+            def call(self, method, params):
+                if method == "eth_getTransactionReceipt":
+                    return {"status": "0x1", "blockNumber": "0xb",
+                            "blockHash": "0x" + f"{11:064x}"}
+                if method == "eth_call" and params[0]["to"] == EXE:
+                    return "0x" + encode(["uint160", "int24", "uint64"], self.visible).hex()
+                if method == "eth_getBlockByNumber" and params[0] == "latest":
+                    return {"timestamp": hex(self.now), "baseFeePerGas": "0x1"}
+                if method == "eth_getLogs" and params[0].get("topics", [None])[0] == keeper.OPEN_PRICE_CONFIGURED_TOPIC:
+                    return self.config_logs
+                return super().call(method, params)
+
+        rpc = ConfigRpc()
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [X])
+        record = keeper._configured_plan_record(rpc, keeper.configure_data(first), tx_hash)
+        state.configured_plans[X] = record
+        event = {"address": Q_LOW,
+                 "topics": [keeper.OPEN_PRICE_CONFIGURED_TOPIC, topic_token, record["planHash"]],
+                 "blockNumber": "0xb", "transactionIndex": "0x0", "logIndex": "0x0"}
+        rpc.config_logs.append(event)
+        with patch.object(keeper, "q_launch_state", return_value=(1, True)):
+            self.assertEqual(record["staticHash"], keeper.config_static_hash(later.abi_config()))
+            self.assertTrue(keeper.configured_plan_reusable(rpc, bindings(), state, later, rpc.now))
+            self.assertFalse(keeper.configured_plan_reusable(rpc, bindings(), state, changed, rpc.now))
+            rpc.now = first.deadline - 29
+            self.assertFalse(keeper.configured_plan_reusable(rpc, bindings(), state, later, rpc.now))
+            rpc.now = 105
+            rpc.config_logs.append({**event, "topics": [keeper.OPEN_PRICE_CONFIGURED_TOPIC,
+                                                           topic_token, "0x" + "bb" * 32],
+                                    "transactionIndex": "0x1"})
+            self.assertFalse(keeper.configured_plan_reusable(rpc, bindings(), state, later, rpc.now))
+            rpc.config_logs.pop()
+            rpc.visible = (config[0], config[3], config[6] + 1)
+            self.assertFalse(keeper.configured_plan_reusable(rpc, bindings(), state, later, rpc.now))
+
+    def test_run_cycle_does_not_resign_identical_live_plan(self):
+        first = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                     10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        later = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                     10**18, 2 * 10**18, 105, keeper.PlanSettings())
+        tx_hash = "0x" + "aa" * 32
+        topic_token = "0x" + X[2:].rjust(64, "0")
+
+        class ConfigRpc(LogRpc):
+            def __init__(self):
+                super().__init__(head=12)
+                self.record = None
+            def call(self, method, params):
+                if method == "eth_getTransactionReceipt":
+                    return {"status": "0x1", "blockNumber": "0xb",
+                            "blockHash": "0x" + f"{11:064x}"}
+                if method == "eth_call" and params[0]["to"] == EXE:
+                    return "0x" + encode(["uint160", "int24", "uint64"],
+                                          (first.starting_sqrt_price_x96, first.tick_spacing,
+                                           first.deadline)).hex()
+                if method == "eth_getLogs" and params[0].get("topics", [None])[0] == keeper.OPEN_PRICE_CONFIGURED_TOPIC:
+                    if self.record is None:
+                        return []
+                    return [{"address": Q_LOW,
+                             "topics": [keeper.OPEN_PRICE_CONFIGURED_TOPIC, topic_token,
+                                        self.record["planHash"]],
+                             "blockNumber": "0xb", "transactionIndex": "0x0", "logIndex": "0x0"}]
+                return super().call(method, params)
+
+        rpc = ConfigRpc()
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [X])
+        store = FakeStore()
+        class FakeSigner:
+            def __init__(self): self.calls = []
+            def submit(self, kind, token_address, data, keeper_state, keeper_store):
+                self.calls.append(kind)
+                keeper_state.configured_plans[token_address] = keeper._configured_plan_record(rpc, data, tx_hash)
+                rpc.record = keeper_state.configured_plans[token_address]
+                keeper_store.save(keeper_state)
+        signer = FakeSigner()
+        with patch.object(keeper, "q_launch_state", return_value=(1, True)), \
+             patch.object(keeper, "make_plan", side_effect=[first, later]), \
+             patch.object(keeper, "discover_launches", return_value=0):
+            a = keeper.run_cycle(rpc, bindings(), state, store, keeper.PlanSettings(), object(),
+                                 signer, 2, 100, False, 1, 1, 1)
+            b = keeper.run_cycle(rpc, bindings(), state, store, keeper.PlanSettings(), object(),
+                                 signer, 2, 100, False, 1, 1, 1)
+        self.assertEqual(signer.calls, ["configure"])
+        self.assertTrue(a["configured"])
+        self.assertFalse(b["configured"])
+
     def test_durable_log_cursor_keeps_pending_tokens_until_q_enqueues(self):
         rpc = LogRpc([log(11, X)], head=14)
         state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
@@ -298,6 +404,28 @@ class KeeperTests(unittest.TestCase):
                                       object(), None, 2, 100, True)
         self.assertEqual(result["waiting"]["not_enqueued_yet"], 1)
         self.assertEqual(state.tokens, [X])
+
+    def test_discovery_skips_non_eth_pair_before_pending_queue(self):
+        other = token(99)
+        rpc = LogRpc([log(11, other, Q_HIGH), log(12, X)], head=14)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
+        store = FakeStore()
+        self.assertEqual(keeper.discover_launches(rpc, state, store, 2, 100), 1)
+        self.assertEqual(state.tokens, [X])
+        self.assertEqual(state.priority_tokens, [X])
+        self.assertEqual(state.last_block, 12)
+
+    def test_discovery_rejects_malformed_pair_data_without_cursor_commit(self):
+        bad = log(11, X)
+        bad["data"] = "0x1234"
+        rpc = LogRpc([bad], head=14)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
+        store = FakeStore()
+        with self.assertRaisesRegex(watch.WatcherError, "malformed TokenLaunched event data"):
+            keeper.discover_launches(rpc, state, store, 2, 100)
+        self.assertEqual(state.last_block, 10)
+        self.assertEqual(state.tokens, [])
+        self.assertEqual(store.saved, [])
 
     def test_cursor_hash_reorg_stops_discovery(self):
         rpc = LogRpc([log(11, X)], head=14)
@@ -469,6 +597,10 @@ class KeeperTests(unittest.TestCase):
                 self.sent = []
             def call(self, method, params):
                 if method == "eth_estimateGas": return "0x186a0"
+                if method == "eth_call":
+                    assert params[0]["to"] == Q_LOW
+                    assert params[0]["data"] == keeper.TRANSFER_STEP_GAS_LIMIT
+                    return "0x" + encode(["uint32"], [9_000_000]).hex()
                 if method == "eth_getTransactionCount": return "0x0"
                 if method == "eth_getBlockByNumber":
                     if params[0] == "latest": return {"baseFeePerGas": "0x1", "timestamp": "0x64"}
@@ -485,7 +617,7 @@ class KeeperTests(unittest.TestCase):
                 raise AssertionError(method)
         rpc = Rpc()
         signer = keeper.KeeperSigner(rpc, bindings(), 1, "0x" + "01" * 32,
-                                     2, 500000, 3500000, 10**9, 10**9, 1, .001)
+                                     2, 500000, 10000000, 10**9, 10**9, 1, .001)
         state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [X])
         store = FakeStore()
         with self.assertRaisesRegex(keeper.KeeperError, "non-keeper"):
@@ -499,6 +631,9 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(signed, account.address.lower())
         decoded = keeper.rlp.decode(bytes.fromhex(raw[4:]))
         self.assertEqual(decoded[7], bytes.fromhex(keeper.PROCESS_NEXT[2:]))
+        process_gas = int.from_bytes(decoded[4], "big")
+        self.assertEqual(process_gas, 10_000_000)
+        self.assertGreater(process_gas, 9_000_000 + 150_000 + 140_000)
         # Simulate a crash after persisting but before broadcasting a fresh
         # same-nonce transaction. Recovery rebroadcasts the exact raw payload.
         pending = store.saved[0]["pendingTx"]
@@ -512,6 +647,21 @@ class KeeperTests(unittest.TestCase):
                                     10**18, 2 * 10**18, 100, keeper.PlanSettings())
         signer.submit("configure", X, keeper.configure_data(plan), state, store)
         self.assertEqual(len(rpc.sent), 2)
+        self.assertEqual(state.configured_plans[X]["staticHash"],
+                         keeper.config_static_hash(plan.abi_config()))
+        pending_config = store.saved[-2]["pendingTx"]
+        state.configured_plans.clear()
+        state.pending_tx = pending_config
+        signer.recover(state, store, keeper.PlanSettings(), object())
+        self.assertIsNone(state.pending_tx)
+        self.assertEqual(state.configured_plans[X]["txHash"], pending_config["txHash"])
+
+        capped = keeper.KeeperSigner(rpc, bindings(), 1, "0x" + "01" * 32,
+                                     2, 500000, 9_999_999, 10**9, 10**9, 1, .001)
+        with self.assertRaisesRegex(keeper.KeeperError, "process gas requirement exceeds configured cap"):
+            capped.submit("process", X, keeper.PROCESS_NEXT, state, store)
+        self.assertEqual(len(rpc.sent), 2)
+        self.assertIsNone(state.pending_tx)
 
     def test_state_file_is_local_and_mode_600(self):
         path = keeper.LOCAL / f"test-pons-price-{uuid4().hex}.json"
@@ -523,6 +673,14 @@ class KeeperTests(unittest.TestCase):
                 state.priority_tokens.append(X)
                 state.priority_expires[X] = 16
                 state.schedule_round = 7
+                plan = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                            10**18, 2 * 10**18, 100, keeper.PlanSettings())
+                state.configured_plans[X] = {
+                    "staticHash": keeper.config_static_hash(plan.abi_config()),
+                    "planHash": "0x" + "aa" * 32, "deadline": plan.deadline,
+                    "sqrtPrice": plan.starting_sqrt_price_x96,
+                    "spacing": plan.tick_spacing, "txHash": "0x" + "bb" * 32,
+                    "block": 11, "blockHash": "0x" + f"{11:064x}"}
                 store.save(state)
             with keeper.KeeperStore(path) as store:
                 restored = store.load(rpc, 1, Q_LOW, GUARD, None)
@@ -530,6 +688,7 @@ class KeeperTests(unittest.TestCase):
             self.assertEqual(restored.priority_tokens, [X])
             self.assertEqual(restored.priority_expires, {X: 16})
             self.assertEqual(restored.schedule_round, 7)
+            self.assertEqual(restored.configured_plans, state.configured_plans)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             legacy = restored.json()
             for field_name in ("priorityTokens", "priorityExpires", "scanCursor",

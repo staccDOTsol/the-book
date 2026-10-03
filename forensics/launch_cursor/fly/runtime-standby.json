@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "qAddress": "0x0E34d0792032Ffc54C058751cF048dA347193472",
+  "priceGuardAddress": "0xDAE4E38AfB99609D8Aca9E9d93a1434Ce230704F",
+  "arguments": [
+    "--standby",
+    "--max-fee-gwei",
+    "0.1",
+    "--max-priority-gwei",
+    "0.01",
+    "--max-enqueues-per-cycle",
+    "1",
+    "--watcher-start-block",
+    "79276309",
+    "--price-start-block",
+    "79276309",
+    "--exit-start-block",
+    "79276309",
+    "--feedback-start-block",
+    "79266048",
+    "--poll-seconds",
+    "5"
+  ]
+}

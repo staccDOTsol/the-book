@@ -267,7 +267,8 @@ class FeedbackSigner:
         max_fee = max(base_fee * 2 + priority, minimum_fee_wei)
         if priority > self.max_priority_wei or max_fee > self.max_fee_wei:
             raise FeedbackError("feedback fee exceeds configured cap")
-        tx = {"chainId": 4663, "nonce": nonce, "to": self.q, "value": 0,
+        tx = {"chainId": 4663, "nonce": nonce,
+              "to": watch.signing_address(self.q), "value": 0,
               "data": data, "gas": gas, "type": 2,
               "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority}
         signed = self.account.sign_transaction(tx)

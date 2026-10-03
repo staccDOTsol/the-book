@@ -19,7 +19,7 @@ import q_status_dashboard as dashboard
 
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-Q = "0x" + "a" * 40
+Q = dashboard.LIVE_Q.lower()
 GUARD = "0x" + "b" * 40
 ZERO = "0x" + "0" * 40
 TOKEN = "0x" + "c" * 40
@@ -37,10 +37,12 @@ def component(name, *, q=Q, secret="signed-raw-tx-secret"):
     return data
 
 
-def supervisor_heartbeat(*, at=NOW, status="running", exit_at=None, price_at=None):
+def supervisor_heartbeat(*, at=NOW, status="running", exit_at=None, price_at=None,
+                         mode="live"):
     exit_at = exit_at or at
     price_at = price_at or at
     return {"schemaVersion": 1, "updatedAt": at.isoformat(),
+            "mode": mode, "writesEnabled": mode == "live",
             "status": status, "watcherStatus": "process_running",
             "lastCompletedKeepers": ["exit", "price", "feedback", "harvest"],
             "lastCompletedAt": at.isoformat(), "consecutiveFailures": 0,
@@ -93,6 +95,22 @@ class DashboardTests(unittest.TestCase):
                          "not_live_verified")
         (self.local / dashboard.JOURNALS["exit"][0]).unlink()
         self.assertEqual(dashboard.snapshot(self.local, NOW)["runtime"]["state"], "partial")
+
+    def test_standby_heartbeat_never_claims_live(self):
+        (self.local / dashboard.SUPERVISOR_FILE).write_text(
+            json.dumps(supervisor_heartbeat(mode="standby")))
+        report = dashboard.snapshot(self.local, NOW)
+        self.assertEqual(report["runtime"]["state"], "standby")
+        self.assertFalse(report["supervisor"]["writesEnabled"])
+
+    def test_old_heartbeat_without_mode_cannot_claim_live(self):
+        self.save_components()
+        heartbeat = supervisor_heartbeat()
+        del heartbeat["mode"]
+        del heartbeat["writesEnabled"]
+        (self.local / dashboard.SUPERVISOR_FILE).write_text(json.dumps(heartbeat))
+        self.assertEqual(dashboard.snapshot(self.local, NOW)["runtime"]["state"],
+                         "not_live_verified")
 
     def test_fresh_price_cannot_mask_stale_exit_cycle(self):
         self.save_components()
@@ -155,6 +173,45 @@ class DashboardTests(unittest.TestCase):
         report = dashboard.snapshot(self.local, NOW)
         self.assertEqual(report["components"]["watcher"]["state"], "invalid")
         self.assertEqual(report["runtime"]["state"], "attention")
+
+    def test_old_q_journals_are_labeled_legacy(self):
+        for name, (filename, _) in dashboard.JOURNALS.items():
+            (self.local / filename).write_text(json.dumps(component(name, q="0x" + "a" * 40)))
+        report = dashboard.snapshot(self.local, NOW)
+        self.assertEqual(report["runtime"]["state"], "legacy")
+        self.assertFalse(report["runtime"]["matchesLiveQ"])
+
+    def test_live_chain_probe_requires_actual_pool_and_launch_evidence(self):
+        q = dashboard.LIVE_Q.lower()
+        pool = dashboard.V3_POOL.lower()
+        usdg = dashboard.USDG.lower()
+        address_word = lambda value: "0x" + value[2:].rjust(64, "0")
+        rows = {1: hex(dashboard.CHAIN_ID), 2: hex(79_316_000), 3: "0x6000",
+                4: {"status": "0x1", "to": dashboard.POOLS_INSTANT_STRATEGY,
+                    "blockNumber": hex(79_307_686), "logs": [{"address": q}]},
+                5: "0x6000", 6: address_word(pool), 7: address_word(usdg),
+                8: address_word(q), 9: hex(1_000), 10: address_word(pool),
+                11: "0x1", 12: "0x4", 13: "0x0"}
+        with patch.object(dashboard, "_rpc_batch", return_value=rows):
+            report = dashboard.chain_status(NOW)
+        self.assertEqual(report["state"], "verified")
+        self.assertEqual(report["pendingEntryCount"], 4)
+        self.assertEqual(report["successfulExecutorSteps"], 0)
+        rows[6] = address_word("0x" + "a" * 40)
+        with patch.object(dashboard, "_rpc_batch", return_value=rows):
+            self.assertEqual(dashboard.chain_status(NOW)["state"], "partial")
+
+    def test_fly_probe_reports_trader_paid_without_echoing_remote_error(self):
+        machines = [{"state": "started", "config": {"env": {"PONS_KEEPER_MODE": "trader-paid"}}}]
+        heartbeat = supervisor_heartbeat()
+        heartbeat["dequeueMode"] = "trader_transfer"
+        heartbeat["lastError"] = {"type": "Error", "message": "secret https://rpc.example/key"}
+        with patch.object(dashboard, "_fly_command", side_effect=[
+            json.dumps(machines), json.dumps(heartbeat)]):
+            report = dashboard.fly_status(NOW)
+        self.assertEqual(report["state"], "running_reported")
+        self.assertEqual(report["deploymentMode"], "trader-paid")
+        self.assertNotIn("rpc.example", json.dumps(report))
 
     def test_untrusted_supervisor_error_is_replaced_without_echoing_secret(self):
         self.save_components()

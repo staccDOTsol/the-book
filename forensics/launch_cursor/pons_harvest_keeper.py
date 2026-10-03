@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-snapshot-age-seconds", type=int, default=20)
     parser.add_argument("--max-poke-gas", type=int, default=500_000)
     parser.add_argument("--max-config-gas", type=int, default=500_000)
-    parser.add_argument("--max-process-gas", type=int, default=6_000_000)
+    parser.add_argument("--max-process-gas", type=int, default=10_000_000)
     parser.add_argument("--max-fee-gwei", default="5")
     parser.add_argument("--max-priority-gwei", default="1")
     parser.add_argument("--receipt-timeout", type=int, default=180)

@@ -55,6 +55,10 @@ MAX_SQRT = 1461446703485210103287273052203988822378723970342
 
 CONFIGURE = "0x" + keccak(text="configureOpen(address,bytes)")[:4].hex()
 PROCESS_NEXT = "0x4ba3eeaf"  # processNext()
+TRANSFER_STEP_GAS_LIMIT = "0x" + keccak(text="transferStepGasLimit()")[:4].hex()
+# Q reserves 150k after the executor call and up to 140k for a harvest
+# preview. Leave room for processNext dispatch and EIP-150 call forwarding.
+PROCESS_GAS_OVERHEAD = 1_000_000
 PRICE_CONFIGURATOR = "0x315d563b"
 EXECUTOR = "0xc34c08e5"
 PRICE_GUARD = "0x36d8b0cc"
@@ -66,6 +70,7 @@ STATE_VIEW = "0x4c4a3c25"
 MEME_HOOK = "0x6651812c"
 GET_LAUNCHED = "0x3cf28b5a"
 OPEN_CONFIGS = "0xb1a38d6c"
+OPEN_PRICE_CONFIGURED_TOPIC = "0x" + keccak(text="OpenPriceConfigured(address,bytes32)").hex()
 GET_RESERVES = "0x0902f1ac"
 FEE_BPS = "0x24a9d853"
 CREATOR_TAX_BPS = "0xc1bb8901"
@@ -362,6 +367,13 @@ def read_uint(rpc: watch.Rpc, contract: str, method: str, output_type: str = "ui
     return int(call_abi(rpc, contract, method, outputs=[output_type])[0])
 
 
+def process_gas_floor(rpc: watch.Rpc, q: str) -> int:
+    step_gas = read_uint(rpc, q, TRANSFER_STEP_GAS_LIMIT, "uint32")
+    if not 100_000 <= step_gas <= 10_000_000:
+        raise KeeperError("Q transferStepGasLimit is outside contract bounds")
+    return step_gas + PROCESS_GAS_OVERHEAD
+
+
 def require_code(rpc: watch.Rpc, contract: str, name: str) -> None:
     code = rpc.call("eth_getCode", [contract, "latest"])
     if (not isinstance(code, str) or len(code) <= 2 or len(code) % 2 != 0 or
@@ -565,6 +577,7 @@ class KeeperState:
     priority_cursor: int = 0
     schedule_round: int = 0
     priority_expires: dict[str, int] = field(default_factory=dict)
+    configured_plans: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def json(self) -> dict[str, Any]:
         return {"version": 1, "chainId": self.chain_id, "factory": watch.PONS_FACTORY,
@@ -572,7 +585,8 @@ class KeeperState:
                 "lastHash": self.last_hash, "tokens": self.tokens, "pendingTx": self.pending_tx,
                 "priorityTokens": self.priority_tokens, "scanCursor": self.scan_cursor,
                 "priorityCursor": self.priority_cursor, "scheduleRound": self.schedule_round,
-                "priorityExpires": self.priority_expires}
+                "priorityExpires": self.priority_expires,
+                "configuredPlans": self.configured_plans}
 
 
 class KeeperStore:
@@ -626,6 +640,7 @@ class KeeperStore:
         priority_cursor = data.get("priorityCursor", 0)
         schedule_round = data.get("scheduleRound", 0)
         priority_expires = data.get("priorityExpires")
+        configured_plans = data.get("configuredPlans", {})
         if priority_expires is None and isinstance(priority, list) and type(schedule_round) is int:
             priority_expires = {token: schedule_round + PRIORITY_ROUNDS for token in priority
                                 if isinstance(token, str)}
@@ -645,13 +660,25 @@ class KeeperStore:
                 not isinstance(priority_expires, dict) or
                 set(priority_expires) != set(priority) or
                 any(type(expiry) is not int or expiry < 0 for expiry in priority_expires.values()) or
+                not isinstance(configured_plans, dict) or
+                any(not isinstance(token, str) or not watch.ADDRESS.fullmatch(token) or
+                    token not in tokens or not isinstance(record, dict) or
+                    set(record) != {"staticHash", "planHash", "deadline", "sqrtPrice", "spacing",
+                                    "txHash", "block", "blockHash"} or
+                    any(not isinstance(record[key], str) or not watch.HASH.fullmatch(record[key])
+                        for key in ("staticHash", "planHash", "txHash", "blockHash")) or
+                    type(record["deadline"]) is not int or not 0 < record["deadline"] <= (1 << 64) - 1 or
+                    type(record["sqrtPrice"]) is not int or not 0 < record["sqrtPrice"] < (1 << 160) or
+                    type(record["spacing"]) is not int or not 0 < record["spacing"] < (1 << 23) or
+                    type(record["block"]) is not int or record["block"] < 0
+                    for token, record in configured_plans.items()) or
                 (pending is not None and not isinstance(pending, dict))):
             raise KeeperError("keeper state fields are malformed")
         if start_block is not None and start_block != block + 1:
             raise KeeperError("--start-block conflicts with saved keeper cursor")
         return KeeperState(chain_id, q, guard, block, block_hash.lower(), tokens, pending,
                            priority, scan_cursor, priority_cursor, schedule_round,
-                           priority_expires)
+                           priority_expires, configured_plans)
 
     def save(self, state: KeeperState) -> None:
         staging = self.path.with_suffix(self.path.suffix + f".{os.getpid()}.new")
@@ -782,6 +809,8 @@ def discover_launches(rpc: watch.Rpc, state: KeeperState, store: KeeperStore,
             if not first <= number <= last or str(log.get("blockHash", "")).lower() != block_hashes[number]:
                 raise KeeperError("noncanonical or out-of-range launch log")
             token = watch.token_from_log(log, watch.PONS_FACTORY)
+            if watch.pair_token_from_log(log) != ZERO:
+                continue
             if token not in known:
                 new_tokens.append(token)
                 known.add(token)
@@ -799,8 +828,8 @@ def discover_launches(rpc: watch.Rpc, state: KeeperState, store: KeeperStore,
 
 def existing_config(rpc: watch.Rpc, executor: str, token: str) -> tuple[Any, ...]:
     # Solidity omits all fixed-array struct fields from this autogenerated
-    # getter. It cannot prove that an armed config still has the intended
-    # ranges or spend caps, so the live keeper refreshes it instead.
+    # getter. The confirmed-tx journal and Q's plan-hash event below verify
+    # those fields; this getter independently checks the visible scalars.
     return call_abi(rpc, executor, OPEN_CONFIGS, ["address"], [token],
                     ["uint160", "int24", "uint64"])
 
@@ -827,6 +856,68 @@ def existing_config_safe(rpc: watch.Rpc, bindings: Bindings, plan: OpenPlan,
         return True
     except (ValueError, TypeError, IndexError, KeeperError):
         return False
+
+
+def config_static_hash(config: tuple[Any, ...]) -> str:
+    """Hash every plan field except the rolling deadline."""
+    return "0x" + keccak(encode(CONFIG_TYPES[:-1], config[:-1])).hex()
+
+
+def _configured_plan_record(rpc: watch.Rpc, data: str, tx_hash: str) -> dict[str, Any]:
+    """Journal only a canonically confirmed configure transaction."""
+    receipt = rpc.call("eth_getTransactionReceipt", [tx_hash])
+    if not isinstance(receipt, dict):
+        raise KeeperError("confirmed configuration receipt disappeared")
+    block = watch.quantity(receipt.get("blockNumber"), "configuration block")
+    block_hash = str(receipt.get("blockHash", "")).lower()
+    if not watch.HASH.fullmatch(block_hash) or watch.block_hash(rpc, block) != block_hash:
+        raise KeeperError("configuration receipt is not canonical")
+    try:
+        _, encoded = decode(["address", "bytes"], bytes.fromhex(data[10:]))
+        config = decode(CONFIG_TYPES, encoded)
+    except (ValueError, DecodingError) as exc:
+        raise KeeperError("confirmed configuration calldata is malformed") from exc
+    return {"staticHash": config_static_hash(config),
+            "planHash": "0x" + keccak(encoded).hex(),
+            "deadline": int(config[6]), "sqrtPrice": int(config[0]),
+            "spacing": int(config[3]), "txHash": tx_hash.lower(),
+            "block": block, "blockHash": block_hash}
+
+
+def configured_plan_reusable(rpc: watch.Rpc, bindings: Bindings, state: KeeperState,
+                             plan: OpenPlan, now: int) -> bool:
+    """Reuse only a confirmed plan whose full arrays remain Q's latest hash."""
+    record = state.configured_plans.get(plan.token)
+    if record is None or record["staticHash"] != config_static_hash(plan.abi_config()):
+        return False
+    if record["deadline"] < now + 30:
+        return False
+    if watch.block_hash(rpc, record["block"]) != record["blockHash"]:
+        return False
+    sqrt_price, spacing, deadline = existing_config(rpc, bindings.executor, plan.token)
+    if (int(sqrt_price) != record["sqrtPrice"] or int(spacing) != record["spacing"] or
+            int(deadline) != record["deadline"]):
+        return False
+    if q_launch_state(rpc, bindings.q, plan.token) != (1, True):
+        return False
+    topic_token = "0x" + plan.token[2:].rjust(64, "0")
+    logs = rpc.call("eth_getLogs", [{"address": bindings.q,
+                                     "fromBlock": hex(record["block"]), "toBlock": "latest",
+                                     "topics": [OPEN_PRICE_CONFIGURED_TOPIC, topic_token]}])
+    if not isinstance(logs, list):
+        raise KeeperError("Q configuration event query is malformed")
+    if not logs:
+        return False
+    latest = max(logs, key=lambda row: (watch.quantity(row.get("blockNumber"), "event block"),
+                                        watch.quantity(row.get("transactionIndex"), "event transaction"),
+                                        watch.quantity(row.get("logIndex"), "event index")))
+    topics = latest.get("topics")
+    if (not isinstance(topics, list) or len(topics) != 3 or
+            str(latest.get("address", "")).lower() != bindings.q or
+            str(topics[0]).lower() != OPEN_PRICE_CONFIGURED_TOPIC or
+            str(topics[1]).lower() != topic_token):
+        raise KeeperError("Q configuration event is malformed")
+    return str(topics[2]).lower() == record["planHash"]
 
 
 def make_plan(rpc: watch.Rpc, bindings: Bindings, token: str,
@@ -947,8 +1038,10 @@ class KeeperSigner:
         gas_estimate = watch.quantity(self.rpc.call("eth_estimateGas", [{"from": self.signer,
                                                "to": self.bindings.q, "data": data}]), "gas estimate")
         gas = ceil_div(gas_estimate * 120, 100)
+        if kind == "process":
+            gas = max(gas, process_gas_floor(self.rpc, self.bindings.q))
         if gas > self._gas_cap(kind):
-            raise KeeperError(f"{kind} gas estimate exceeds configured cap")
+            raise KeeperError(f"{kind} gas requirement exceeds configured cap")
         nonce = watch.quantity(self.rpc.call("eth_getTransactionCount", [self.signer, "pending"]), "nonce")
         latest = self.rpc.call("eth_getBlockByNumber", ["latest", False])
         if not isinstance(latest, dict) or "baseFeePerGas" not in latest:
@@ -958,7 +1051,8 @@ class KeeperSigner:
                        self.max_priority_wei)
         if 2 * base_fee + priority > self.max_fee_wei:
             raise KeeperError("keeper fee exceeds configured cap")
-        transaction = {"chainId": self.chain_id, "nonce": nonce, "to": self.bindings.q,
+        transaction = {"chainId": self.chain_id, "nonce": nonce,
+                       "to": watch.signing_address(self.bindings.q),
                        "value": 0, "data": data, "gas": gas, "type": 2,
                        "maxFeePerGas": 2 * base_fee + priority, "maxPriorityFeePerGas": priority}
         signed = self.account.sign_transaction(transaction)
@@ -976,6 +1070,8 @@ class KeeperSigner:
             state.pending_tx = None
             store.save(state)
             raise WaitForPrice(f"{kind} reverted; token remains pending")
+        if kind == "configure":
+            state.configured_plans[token] = _configured_plan_record(self.rpc, data, tx_hash)
         state.pending_tx = None
         store.save(state)
 
@@ -1065,6 +1161,8 @@ class KeeperSigner:
                 state.pending_tx = None
                 store.save(state)
                 return
+        if kind == "configure":
+            state.configured_plans[token] = _configured_plan_record(self.rpc, pending["data"], tx_hash)
         state.pending_tx = None
         store.save(state)
 
@@ -1120,6 +1218,7 @@ def _expire_priority(state: KeeperState) -> bool:
 
 def _remove_pending_token(state: KeeperState, token: str) -> None:
     _drop_priority(state, token)
+    state.configured_plans.pop(token, None)
     index = state.tokens.index(token)
     del state.tokens[index]
     if index < state.scan_cursor:
@@ -1198,9 +1297,12 @@ def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: Kee
         if q_launch_state(rpc, bindings.q, token)[0] != 1:
             waiting["launch_stage_changed_during_plan"] = waiting.get("launch_stage_changed_during_plan", 0) + 1
             continue
-        # The public executor getter omits the three fixed arrays. A fresh
-        # configuration is the only fail-closed way to verify all bands.
-        should_configure = True
+        # The public getter omits fixed arrays. The durable journal records
+        # our confirmed calldata, and Q's latest plan-hash event proves that
+        # those exact arrays have not been replaced since our transaction.
+        should_configure = not configured_plan_reusable(
+            rpc, bindings, state, plan, latest_block_time(rpc)
+        )
         if should_configure:
             try:
                 signer.submit("configure", token, configure_data(plan), state, store)

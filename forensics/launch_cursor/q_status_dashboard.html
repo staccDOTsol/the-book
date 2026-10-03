@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Hookless Q · local status</title>
+  <title>🧙‍♂️ Q · live status</title>
   <style>
     :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#090f19; color:#e8f0f7; }
     * { box-sizing:border-box; }
@@ -19,8 +19,9 @@
     .hero p { color:#b8c7d4; max-width:760px; margin:12px 0 0; }
     .badge { flex-shrink:0; display:inline-flex; align-items:center; padding:8px 13px; border-radius:999px; background:#344351; color:#dce4ed; font-size:.8rem; font-weight:700; letter-spacing:.02em; }
     .badge.live_reported { color:#a1f1d4; background:#12513f; }
+    .badge.verified { color:#a1f1d4; background:#12513f; }
     .badge.attention { color:#ffd3ba; background:#593221; }
-    .badge.partial,.badge.not_live_verified { color:#f7df9f; background:#594921; }
+    .badge.partial,.badge.not_live_verified,.badge.legacy { color:#f7df9f; background:#594921; }
     .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
     .components { margin-top:16px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
     .card-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
@@ -32,6 +33,9 @@
     .address { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.81rem; }
     .note { margin-top:17px; color:#91a7b9; font-size:.86rem; }
     .footer { color:#8298aa; margin-top:22px; font-size:.84rem; }
+    .section-heading { margin:28px 0 12px; color:#cadce9; }
+    .source { color:#7eced6; font-size:.76rem; letter-spacing:.04em; }
+    a { color:#91d7df; }
     #error { display:none; padding:14px 18px; border-radius:12px; margin-bottom:16px; background:#593221; color:#ffcfb2; }
     @media (max-width:800px) { .components { grid-template-columns:1fr; } }
     @media (max-width:650px) { main { padding:28px 16px 46px; } .hero { display:block; } .hero .badge { margin-top:18px; } .grid { grid-template-columns:1fr; } }
@@ -39,19 +43,58 @@
 </head>
 <body>
 <main>
-  <div class="kicker">Local operations · read only</div>
-  <h1>Hookless Q watch</h1>
-  <p class="intro">Watcher, price keeper, exit keeper, and supervisor reports from this repository’s private local journals. This page cannot start a keeper or submit a transaction.</p>
+  <div class="kicker">Robinhood · read only · refreshes every 5 seconds</div>
+  <h1>🧙‍♂️ Q status</h1>
+  <p class="intro">Corrected Q, its Pools.xyz launch and Q/USDG v3 pool, and the Fly trader-paid keeper. Evidence is checked from the public chain and Fly; local journals appear separately below.</p>
   <div id="error" role="alert"></div>
+  <section class="card hero" aria-labelledby="live-heading">
+    <div><h2 id="live-heading">Live overview</h2><p id="live-detail">Checking Robinhood and Fly…</p></div>
+    <span class="badge" id="live-state">Checking</span>
+  </section>
+  <div class="grid">
+    <section class="card" aria-labelledby="chain-heading">
+      <div class="card-head"><h2 id="chain-heading">Robinhood chain</h2><span class="small-badge" id="chain-badge">Checking</span></div>
+      <dl>
+        <dt>Q contract</dt><dd id="live-q" class="address">—</dd>
+        <dt>Pools.xyz launch tx</dt><dd id="launch-tx" class="address">—</dd>
+        <dt>Launch receipt</dt><dd id="launch-status">—</dd>
+        <dt>Q/USDG v3 pool</dt><dd id="v3-pool" class="address">—</dd>
+        <dt>Pool registration / liquidity</dt><dd id="pool-status">—</dd>
+        <dt>Transfer trigger</dt><dd id="trigger-status">—</dd>
+        <dt>Pending entries</dt><dd id="pending-entries">—</dd>
+        <dt>Completed executor steps</dt><dd id="executor-steps">—</dd>
+        <dt>Latest block</dt><dd id="latest-block">—</dd>
+        <dt>Chain check</dt><dd id="chain-checked">—</dd>
+      </dl>
+      <p class="note">Verified against Robinhood public JSON-RPC. A pending entry is queued work, not a completed executor step.</p>
+    </section>
+    <section class="card" aria-labelledby="fly-heading">
+      <div class="card-head"><h2 id="fly-heading">Fly keeper</h2><span class="small-badge" id="fly-badge">Checking</span></div>
+      <dl>
+        <dt>Machine</dt><dd id="machine-status">—</dd>
+        <dt>Deployment mode</dt><dd id="fly-deployment-mode">—</dd>
+        <dt>Supervisor / dequeue</dt><dd id="fly-mode">—</dd>
+        <dt>Supervisor status</dt><dd id="fly-status">—</dd>
+        <dt>Heartbeat</dt><dd id="fly-heartbeat">—</dd>
+        <dt>Watcher</dt><dd id="fly-watcher">—</dd>
+        <dt>Exit / price / feedback / harvest</dt><dd id="fly-cycles">—</dd>
+        <dt>Consecutive failures</dt><dd id="fly-failures">—</dd>
+        <dt>Last issue</dt><dd id="fly-error">—</dd>
+        <dt>Fly check</dt><dd id="fly-checked">—</dd>
+      </dl>
+      <p class="note">Fly status comes from its Machine list and remote supervisor heartbeat. Trader-paid mode leaves dequeue gas to eligible Q/USDG v3 transfers.</p>
+    </section>
+  </div>
+  <h2 class="section-heading">Local journal evidence</h2>
   <section class="card hero" aria-labelledby="runtime-heading">
-    <div><h2 id="runtime-heading">Runtime evidence</h2><p id="runtime-detail">Loading local status…</p></div>
+    <div><h2 id="runtime-heading">This computer’s saved runtime</h2><p id="runtime-detail">Loading local status…</p></div>
     <span class="badge" id="runtime-state">Loading</span>
   </section>
   <div class="grid">
     <section class="card" aria-labelledby="binding-heading">
-      <div class="card-head"><h2 id="binding-heading">Q configuration</h2><span class="small-badge">Local evidence</span></div>
-      <dl><dt>Q address</dt><dd id="q-address" class="address">—</dd><dt>Chain ID</dt><dd id="chain-id">—</dd><dt>Deployment</dt><dd>Not independently verified</dd><dt>Snapshot</dt><dd id="snapshot-at">—</dd></dl>
-      <p class="note">A saved address or cursor does not prove that a contract is deployed now.</p>
+      <div class="card-head"><h2 id="binding-heading">Journal binding</h2><span class="small-badge">Local only</span></div>
+      <dl><dt>Saved Q address</dt><dd id="q-address" class="address">—</dd><dt>Chain ID</dt><dd id="chain-id">—</dd><dt>Matches corrected Q</dt><dd id="local-match">—</dd><dt>Snapshot</dt><dd id="snapshot-at">—</dd></dl>
+      <p class="note">Saved cursors and process status do not verify the current chain or Fly deployment.</p>
     </section>
     <section class="card" aria-labelledby="supervisor-heading">
       <div class="card-head"><h2 id="supervisor-heading">Supervisor</h2><span class="small-badge" id="supervisor-badge">No report</span></div>
@@ -59,13 +102,13 @@
     </section>
   </div>
   <div class="components" id="components"></div>
-  <p class="footer">Cursor writes show saved history, not process health. “Live supervisor reported” requires a recent heartbeat and recent successful exit and price cycles. This page makes no RPC calls and never reads signed transaction bodies or keys.</p>
+  <p class="footer">The server performs read-only public RPC and Fly status checks every 20 seconds. It never sends transactions or reads signer keys or signed transaction bodies.</p>
 </main>
 <script>
   const $ = id => document.getElementById(id);
   const show = value => value === null || value === undefined || value === '' ? '—' : String(value);
   const when = value => { if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? '—' : new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',timeZoneName:'short'}).format(d); };
-  const labels = {unconfigured:'Unconfigured / undeployed',partial:'Partly configured',attention:'Needs attention',not_live_verified:'Live status unverified',live_reported:'Live supervisor reported'};
+  const labels = {unconfigured:'No keeper journals',standby:'Read-only standby',partial:'Partly configured',attention:'Needs attention',legacy:'Old Q journals',not_live_verified:'Local runtime unverified',live_reported:'Local supervisor reported'};
   const componentNames = {watcher:'Launch watcher',price:'Price keeper',exit:'Exit keeper'};
   function row(root, label, value, className) {
     const dt=document.createElement('dt'), dd=document.createElement('dd');
@@ -93,6 +136,7 @@
     $('runtime-detail').textContent=runtime.detail;
     $('q-address').textContent=show(runtime.q);
     $('chain-id').textContent=show(runtime.chainId);
+    $('local-match').textContent=runtime.q?(runtime.matchesLiveQ?'Yes':'No · old Q'):'Unknown';
     $('snapshot-at').textContent=when(data.generatedAt);
     $('supervisor-badge').textContent=supervisor.state==='valid'?(supervisor.fresh?show(supervisor.status):'Stale report'):supervisor.state==='missing'?'No report':'Invalid report';
     $('supervisor-badge').className='small-badge '+(runtime.state==='live_reported'?'good':supervisor.state==='invalid'?'issue':'');
@@ -106,9 +150,44 @@
     $('last-issue').textContent=supervisor.lastError?supervisor.lastError.message:'—';
     const cards=$('components'); cards.replaceChildren(...Object.entries(data.components).map(([name, component])=>renderComponent(name,component)));
   }
+  function renderLive(data) {
+    const chain=data.chain, fly=data.fly;
+    $('live-q').textContent=data.q;
+    $('launch-tx').textContent=data.launchTx;
+    $('v3-pool').textContent=data.v3Pool;
+    $('chain-badge').textContent=chain.state==='verified'?'Verified':chain.state==='unavailable'?'Unavailable':'Needs attention';
+    $('chain-badge').className='small-badge '+(chain.state==='verified'?'good':'issue');
+    $('launch-status').textContent=chain.launchConfirmed===null?'Unavailable':chain.launchConfirmed?`Confirmed · block ${show(chain.launchBlock)}`:'Unconfirmed';
+    $('pool-status').textContent=chain.poolVerified===null?'Unavailable':chain.poolVerified?'Factory registered · liquid':'Not verified';
+    $('trigger-status').textContent=chain.transferTriggerBound===null?'Unavailable':chain.transferTriggerBound&&chain.automaticEnabled?'Bound · automatic on':'Not fully active';
+    $('pending-entries').textContent=show(chain.pendingEntryCount);
+    $('executor-steps').textContent=show(chain.successfulExecutorSteps);
+    $('latest-block').textContent=show(chain.latestBlock);
+    $('chain-checked').textContent=when(chain.checkedAt);
+    $('fly-badge').textContent=fly.state==='running_reported'?'Running reported':fly.state==='unavailable'?'Unavailable':'Needs attention';
+    $('fly-badge').className='small-badge '+(fly.state==='running_reported'?'good':'issue');
+    $('machine-status').textContent=fly.machineCount===null?'Unavailable':`${fly.runningCount} running / ${fly.machineCount} total`;
+    $('fly-deployment-mode').textContent=show(fly.deploymentMode);
+    $('fly-mode').textContent=fly.mode?`${fly.mode} / ${show(fly.dequeueMode)} · writes ${fly.writesEnabled?'enabled':'disabled'}`:'Unavailable';
+    $('fly-status').textContent=show(fly.status);
+    $('fly-heartbeat').textContent=fly.updatedAt?`${when(fly.updatedAt)} · ${fly.heartbeatFresh?'fresh':'stale'}`:'Unavailable';
+    $('fly-watcher').textContent=show(fly.watcherStatus).replaceAll('_',' ');
+    $('fly-cycles').textContent=Object.entries(fly.keeperFresh).map(([name,recent])=>`${name} ${recent?'recent':'stale'}`).join(' · ');
+    $('fly-failures').textContent=show(fly.consecutiveFailures);
+    $('fly-error').textContent=show(fly.lastError);
+    $('fly-checked').textContent=when(fly.checkedAt);
+    const healthy=chain.state==='verified'&&fly.state==='running_reported';
+    $('live-state').textContent=healthy?'Chain verified · Fly running':chain.state==='unavailable'||fly.state==='unavailable'?'Live check unavailable':'Needs attention';
+    $('live-state').className='badge '+(healthy?'verified':'attention');
+    $('live-detail').textContent=healthy?'Corrected Q launch and liquid Q/USDG v3 pool are verified onchain. Fly reports one running trader-paid keeper with a fresh heartbeat.':
+      'See separate chain and Fly checks below; stale or unavailable evidence is not treated as live.';
+  }
   async function refresh() {
-    try { const response=await fetch('/api/status',{cache:'no-store'}); if(!response.ok) throw new Error('Status request failed'); render(await response.json()); $('error').style.display='none'; }
-    catch { $('error').textContent='Local status could not be loaded. The dashboard server may have stopped.'; $('error').style.display='block'; }
+    const results=await Promise.allSettled(['/api/live','/api/status'].map(async path=>{const response=await fetch(path,{cache:'no-store'}); if(!response.ok) throw new Error('Status request failed'); return response.json();}));
+    if(results[0].status==='fulfilled') renderLive(results[0].value);
+    if(results[1].status==='fulfilled') render(results[1].value);
+    $('error').style.display=results.every(result=>result.status==='fulfilled')?'none':'block';
+    $('error').textContent='One or more status sources could not be loaded. Check the dashboard server.';
   }
   refresh(); setInterval(refresh,5000);
 </script>

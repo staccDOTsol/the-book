@@ -5,7 +5,9 @@
 deployer, address pairToken, uint256 launchConfigId, uint256
 graduationThreshold)` event. The filter topic is the Keccak hash of that
 signature; topic 1 contains the launch token. The factory address is fixed in
-the watcher. Its sole onchain write is owner-signed `Q.enqueue(token)`.
+the watcher. It decodes the event's non-indexed `pairToken` and skips launches
+whose pair is not native ETH (`address(0)`), since the price keeper cannot plan
+them. Its sole onchain write is owner-signed `Q.enqueue(token)`.
 
 The watcher verifies the configured chain ID, Q contract code,
 `Q.ponsFactory()`, and (in live mode) `Q.owner()` before any transaction. It
@@ -52,7 +54,8 @@ read-only preview is:
 .venv/bin/python forensics/launch_cursor/pons_launch_watcher.py --start-block BLOCK --once
 ```
 
-The preview prints `would_enqueue` or `already_enqueued` records. It does not
+The preview prints `would_enqueue`, `already_enqueued`, or
+`skipped_unsupported_pair` records. It does not
 advance the live cursor or read the owner key. Once Q is deployed and the
 owner has deliberately configured the runtime, start continuous submission:
 
@@ -61,16 +64,18 @@ owner has deliberately configured the runtime, start continuous submission:
 ```
 
 On later starts omit `--start-block`. `--once --live` is available for a
-bounded catch-up run. Defaults are three confirmation blocks, 2,000 blocks
-per `eth_getLogs` request, a ten-second polling interval, three attempts for
-a confirmed reverted enqueue, 500,000 gas, 5 gwei max fee, and 1 gwei max
-priority fee. Adjust with the matching CLI flags for the actual RPC and
-network conditions. The fee and gas caps stop the watcher before signing a
-transaction that exceeds them.
+bounded catch-up run. Live backfill defaults to **one newly submitted enqueue
+per cycle**; `--max-enqueues-per-cycle N` changes that limit. A confirmed
+revert stops the cycle after one attempt, and a later cycle can retry the
+same token. Other defaults are three confirmation blocks, 2,000 blocks per
+`eth_getLogs` request, a ten-second polling interval, 500,000 gas, 5 gwei
+max fee, and 1 gwei max priority fee. Adjust the gas and fee caps for the
+actual RPC and network conditions. The fee and gas caps stop the watcher
+before signing a transaction that exceeds them.
 
 The JSON cursor and lock are under this repository's ignored `.local`
 directory, with the cursor written by atomic replace and fsync. The cursor
-records chain ID, Q, the last fully processed block and its hash, plus any
+records chain ID, Q, the processed block and its hash, plus any
 pending signed transaction. The pending record includes a **signed raw
 transaction** so a crash between saving it and broadcasting it can recover
 without a different nonce or call. The file is mode `0600`; protect and back
@@ -78,6 +83,12 @@ up `.local` as wallet operational state. Do not move the cursor to `/tmp`.
 Run only one watcher against a given cursor; a file lock enforces this on one
 host. If moving hosts, copy the cursor securely before starting the new
 instance.
+
+If a bounded cycle ends within a block, `lastLogIndex` records the exact
+factory log already handled in that block. The next cycle rereads that block,
+skips logs through that index, and continues with later logs. Skipped
+non-ETH launches also advance the cursor; malformed event data stops without
+advancing it. A read-only preview uses an in-memory copy of this position.
 
 ## Recovery and limits
 
@@ -100,8 +111,8 @@ launch itself later disappears in a deeper reorg.
 
 The watcher does not configure a price, mint an LP, monitor range boundaries,
 exit positions, or fund Q. The separate price and exit keepers and Q/executor
-paths described in [README.md](README.md) remain necessary. Q has not been
-launched or funded, and this watcher alone does not make live trading ready.
+paths described in [README.md](README.md) remain necessary; this watcher alone
+does not make live trading ready.
 
 Offline verification:
 

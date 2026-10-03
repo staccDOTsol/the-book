@@ -15,6 +15,7 @@ from eth_abi import decode, encode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pons_exit_keeper as exit_keeper
+import pons_harvest_keeper as harvest_keeper
 import pons_price_keeper as price
 import pons_launch_watcher as watch
 
@@ -147,6 +148,53 @@ class Store:
 
 
 class ExitKeeperTests(unittest.TestCase):
+    def test_process_signers_use_live_q_gas_floor_and_fail_closed_at_cap(self):
+        class Rpc:
+            def __init__(self): self.sent = []
+            def call(self, method, params):
+                if method == "eth_estimateGas": return hex(40_000)
+                if method == "eth_call":
+                    assert params[0]["to"] == Q
+                    assert params[0]["data"] == price.TRANSFER_STEP_GAS_LIMIT
+                    return "0x" + encode(["uint32"], [9_000_000]).hex()
+                if method == "eth_getTransactionCount": return "0x0"
+                if method == "eth_getBlockByNumber": return {"baseFeePerGas": "0x1"}
+                if method == "eth_maxPriorityFeePerGas": return "0x1"
+                if method == "eth_sendRawTransaction":
+                    self.sent.append(params[0])
+                    return "0x" + exit_keeper.keccak(bytes.fromhex(params[0][2:])).hex()
+                raise AssertionError(method)
+
+        rpc, store = Rpc(), Store()
+        state = price.KeeperState(4663, Q, GUARD, 1, "0x" + "aa" * 32, [X])
+        args = (rpc, bindings(), 4663, "0x" + "01" * 32,
+                1, 500_000, 500_000, 10_000_000, 10**9, 10**9, 1, .001)
+        exit_signer = exit_keeper.ExitSigner(*args)
+        with patch.object(exit_signer, "_wait_receipt"):
+            exit_signer.submit("process", X, exit_keeper.PROCESS_NEXT, state, store,
+                               purpose="configured_exit")
+        raw = bytes.fromhex(rpc.sent[0][2:])
+        fields = exit_keeper.rlp.decode(raw[1:])
+        process_gas = int.from_bytes(fields[4], "big")
+        self.assertEqual(process_gas, 10_000_000)
+        self.assertGreater(process_gas, 9_000_000 + 150_000 + 140_000)
+
+        harvest_signer = harvest_keeper.HarvestSigner(*args)
+        with patch.object(harvest_signer, "_wait_receipt"):
+            harvest_signer.submit("process", X, exit_keeper.PROCESS_NEXT, state, store,
+                                  purpose="configured_harvest")
+        harvest_fields = exit_keeper.rlp.decode(bytes.fromhex(rpc.sent[1][2:])[1:])
+        self.assertEqual(int.from_bytes(harvest_fields[4], "big"), 10_000_000)
+
+        capped_args = (*args[:7], 9_999_999, *args[8:])
+        capped = exit_keeper.ExitSigner(*capped_args)
+        with self.assertRaisesRegex(exit_keeper.WaitForExit,
+                                    "process gas requirement exceeds configured cap"):
+            capped.submit("process", X, exit_keeper.PROCESS_NEXT, state, store,
+                          purpose="configured_exit")
+        self.assertEqual(len(rpc.sent), 2)
+        self.assertIsNone(state.pending_tx)
+
     def test_exit_signer_binding_rejects_price_or_owner_account(self):
         owner, opening, exiting = "0x" + "01" * 20, "0x" + "02" * 20, "0x" + "03" * 20
         getters = {exit_keeper.OWNER: owner,

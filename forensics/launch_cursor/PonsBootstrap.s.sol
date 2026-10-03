@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {HooklessLPExecutor} from "./HooklessLPExecutor.sol";
 import {PositionInspector} from "./PositionInspector.sol";
 import {LaunchCursorToken} from "./LaunchCursorToken.sol";
+import {LaunchCursorTokenV2} from "./LaunchCursorTokenV2.sol";
 import {OpenPriceGuard} from "./OpenPriceGuard.sol";
 import {ExitSettlementRouter} from "./ExitSettlementRouter.sol";
 import {HooklessQuoteBuyAdapter} from "./HooklessQuoteBuyAdapter.sol";
@@ -114,6 +115,9 @@ contract PonsBootstrap {
     address private constant FEES_OFF_SPLITTER = 0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee;
     address private constant BENEFICIARY_VAULT = 0x26d2F7AcB07707034406a0dC458351Bb63C02553;
     address private constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+    address private constant V3_FACTORY = 0x1f7d7550B1b028f7571E69A784071F0205FD2EfA;
+    address private constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+    uint24 private constant Q_USDG_V3_FEE = 3_000;
     address private constant WIZARD_FANOUT = 0x1b88A6c6516FD2918905186F21Bb9F5CaA1a15c8;
     bytes32 private constant WIZARD_FANOUT_CODEHASH =
         0x384c9220050083b0efd1cac6ac47ea6901e68a0a10a9ff1ad3a06ddade6d21ae;
@@ -170,11 +174,66 @@ contract PonsBootstrap {
         return (address(ex), address(ins), address(q));
     }
 
+    /// @notice Deploy a new wizard Q whose canonical v3 Q/USDG pool pays for
+    /// one ready X/Q queue action on each Q transfer. The v3 pool is bound
+    /// only after it has liquidity, during the separate atomic bootstrap.
+    function deployCoreV2() external returns (address executor, address inspector, address quoteToken) {
+        address operator = vm.envAddress("PONS_DEPLOYER");
+        address strategy = vm.envAddress("PONS_INSTANT_STRATEGY");
+        _requireNonzero(operator, "operator");
+        _verifyExternal(strategy);
+        if (V3_FACTORY.code.length == 0 || USDG.code.length == 0) {
+            revert PreflightFailed("canonical v3 factory or USDG missing");
+        }
+
+        string memory name = _pinnedMetadata("PONS_Q_NAME", Q_LABEL);
+        string memory symbol = _pinnedMetadata("PONS_Q_SYMBOL", Q_LABEL);
+        string memory description = _pinnedMetadata("PONS_Q_DESCRIPTION", Q_LABEL);
+        string memory imageURI = _pinnedMetadata("PONS_Q_IMAGE_URI", Q_IMAGE_URI);
+        uint256 retry = vm.envUint("PONS_RETRY_DELAY_SECONDS");
+        uint256 gasLimit = vm.envUint("PONS_TRANSFER_STEP_GAS_LIMIT");
+        uint256 gasPrice = vm.envUint("PONS_HARVEST_GAS_PRICE_CEILING_WEI");
+        if (retry == 0 || retry > type(uint64).max || gasLimit < 100_000 || gasLimit > 10_000_000 || gasPrice == 0) {
+            revert PreflightFailed("cursor policy out of range");
+        }
+
+        address[] memory endpoints = new address[](8);
+        endpoints[0] = POOL_MANAGER;
+        endpoints[1] = POSITION_MANAGER;
+        endpoints[2] = PERMIT2;
+        endpoints[3] = LAUNCHER;
+        endpoints[4] = strategy;
+        endpoints[5] = IBootstrapInstantStrategy(strategy).feeSplitter();
+        endpoints[6] = PONS_FACTORY;
+        endpoints[7] = QUOTER;
+
+        vm.startBroadcast(operator);
+        HooklessLPExecutor ex = new HooklessLPExecutor(POOL_MANAGER, POSITION_MANAGER, STATE_VIEW, PERMIT2);
+        PositionInspector ins = new PositionInspector(address(ex));
+        LaunchCursorTokenV2 q = new LaunchCursorTokenV2(
+            LaunchCursorToken.Metadata(name, symbol, description, imageURI),
+            SUPPLY, PONS_FACTORY, address(ex), address(ins),
+            uint64(retry), uint32(gasLimit), gasPrice, endpoints,
+            LaunchCursorTokenV2.V3PoolConfig(V3_FACTORY, USDG, Q_USDG_V3_FEE)
+        );
+        ex.bindController(address(q));
+        ins.bindCursor(address(q));
+        q.setAutomatic(false);
+        vm.stopBroadcast();
+
+        _verifyCore(operator, ex, ins, q);
+        if (q.automaticEnabled() || address(q.v3Factory()) != V3_FACTORY || q.usdg() != USDG ||
+            q.v3PoolFee() != Q_USDG_V3_FEE || q.canonicalV3Pool() != address(0)) {
+            revert PreflightFailed("v3 cursor core mismatch");
+        }
+        return (address(ex), address(ins), address(q));
+    }
+
     /// @notice Read-only launch check and exact calldata for an owner-wallet
     /// existing-token launch. The first two approvals are separate writes; the
     /// deposit and distribution are encoded in ONE atomic launcher multicall.
     function preflightLaunch()
-        external returns (address quoteToken, address launcher, bytes memory qApprove,
+        public returns (address quoteToken, address launcher, bytes memory qApprove,
             bytes memory permit2Approve, bytes memory atomicLaunch)
     {
         address operator = vm.envAddress("PONS_DEPLOYER");
@@ -210,6 +269,32 @@ contract PonsBootstrap {
         calls[1] = abi.encodeCall(IBootstrapLauncher.distributeToken, (address(q), distribution, bytes32(0)));
         atomicLaunch = abi.encodeCall(IBootstrapLauncher.multicall, (calls));
         return (address(q), LAUNCHER, qApprove, permit2Approve, atomicLaunch);
+    }
+
+    /// @notice Send the two approvals and the atomic Pools.xyz Instant Launch
+    /// after preflightLaunch has checked the fresh Q and target pool state.
+    function launchExistingQ() external {
+        address operator = vm.envAddress("PONS_DEPLOYER");
+        address strategy = vm.envAddress("PONS_INSTANT_STRATEGY");
+        (address quoteToken, address launcher, bytes memory qApprove,
+            bytes memory permit2Approve, bytes memory atomicLaunch) = preflightLaunch();
+
+        vm.startBroadcast(operator);
+        (bool approved, bytes memory approvalResult) = quoteToken.call(qApprove);
+        if (!approved || approvalResult.length != 32 || !abi.decode(approvalResult, (bool))) {
+            revert PreflightFailed("Q Permit2 approval failed");
+        }
+        (bool permitApproved,) = PERMIT2.call(permit2Approve);
+        if (!permitApproved) revert PreflightFailed("Permit2 launcher approval failed");
+        (bool launched,) = launcher.call(atomicLaunch);
+        if (!launched) revert PreflightFailed("atomic Q/ETH launch failed");
+        vm.stopBroadcast();
+
+        // Instant Launch can initialize its single-sided position exactly at
+        // the start tick, where StateView reports zero active liquidity until
+        // the first ETH -> Q swap moves into the range. Verify the launch
+        // state here; the later Q acquisition must prove a fill.
+        _verifyInitializedQPool(strategy, LaunchCursorToken(quoteToken));
     }
 
     /// @notice Deploy an owner-only Q/ETH buyer after Q's launch. Its output
@@ -292,7 +377,7 @@ contract PonsBootstrap {
         _verifyExternal(strategy);
         _verifyCore(operator, ex, ins, q);
         if (!q.internalEndpoint(strategy)) revert PreflightFailed("launch strategy not allowlisted in Q");
-        _verifyLaunchedQ(strategy, q);
+        _verifyInitializedQPool(strategy, q);
         if (developer == address(0) || developer == address(q) || developer == address(ex) ||
             developer == WIZARD_FANOUT || configurator == address(0) ||
             configurator == operator || exitConfigurator == address(0) ||

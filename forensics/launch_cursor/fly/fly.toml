@@ -1,0 +1,24 @@
+app = "the-book-q-keeper"
+primary_region = "yyz"
+kill_signal = "SIGTERM"
+kill_timeout = 120
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PONS_KEEPER_MODE = "trader-paid"
+  PONS_CHAIN_ID = "4663"
+
+[deploy]
+  strategy = "rolling"
+
+[[mounts]]
+  source = "keeper_data"
+  destination = "/app/.local"
+  snapshot_retention = 14
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

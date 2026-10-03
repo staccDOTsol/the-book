@@ -278,8 +278,12 @@ contract LaunchCursorToken is CursorERC20 {
     mapping(uint256 => address) private _pendingReports;
     uint256 private _pendingReportHead;
     uint256 private _pendingReportTail;
+    /// @notice Counts only completed executor opens, exits and harvests.
+    /// Scheduler housekeeping never increments this value.
+    uint256 public successfulExecutorSteps;
 
     event LaunchEnqueued(address indexed token, address indexed curve);
+    event StepAttempted(address indexed token, Step step);
     event StepSucceeded(address indexed token, Step step);
     event AllPositionsExited(address indexed token);
     event OpenMinted(address indexed token, uint256 mintedQuote, uint256 quoteSpent);
@@ -408,8 +412,8 @@ contract LaunchCursorToken is CursorERC20 {
         uint256 simulatedSupply = supplyBefore;
         if (simulatedSupply > TOTAL_SUPPLY_CEILING) revert BadConfiguration();
         for (uint8 i; i < 3; ++i) {
-            // Preflight all three gross mints against the ceiling before
-            // issuing any Q. Each amount sees the prior gross mint.
+            // Each amount sees the prior gross mint. A later failure reverts
+            // this entire self-call, including all earlier mints.
             uint256 amount = simulatedSupply * OPEN_MINT_BPS / 10_000;
             if (amount == 0 || amount > TOTAL_SUPPLY_CEILING - simulatedSupply) {
                 revert BadConfiguration();
@@ -417,9 +421,7 @@ contract LaunchCursorToken is CursorERC20 {
             mintedQuote[i] = amount;
             totalMinted += amount;
             simulatedSupply += amount;
-        }
-        for (uint8 i; i < 3; ++i) {
-            _update(address(0), address(executor), mintedQuote[i]);
+            _update(address(0), address(executor), amount);
         }
         uint256[3] memory quoteSpent = executor.open(token, feePips, mintedQuote);
         uint256 totalSpent;
@@ -842,20 +844,37 @@ contract LaunchCursorToken is CursorERC20 {
         }
     }
 
-    function _update(address from, address to, uint256 amount) internal override {
+    function _update(address from, address to, uint256 amount) internal virtual override {
         super._update(from, to, amount);
         if (
             automaticEnabled && !_processing && amount != 0 && from != address(0) &&
-            to != address(0) && msg.sender == from && msg.sender.code.length == 0 &&
-            !internalEndpoint[msg.sender] &&
-            !internalEndpoint[from] && !internalEndpoint[to]
+            to != address(0) && _shouldAttemptTransferStep(from, to)
         ) {
-            uint256 stepGas = uint256(transferStepGasLimit) + POST_CALL_GAS_RESERVE +
-                TRANSFER_STEP_OVERHEAD;
+            uint256 stepGas = _transferStepCallGas();
             if (gasleft() > stepGas + OUTER_TRANSFER_GAS_RESERVE) {
                 try this.processTransferStep{gas: stepGas}() returns (bool, bool) {} catch {}
             }
         }
+    }
+
+    /// @dev A replacement token may add a specific transfer path while
+    /// retaining the queue's gas cap, fallback behavior and processing guard.
+    /// This default exactly preserves the original direct EOA policy.
+    function _shouldAttemptTransferStep(address from, address to) internal view virtual returns (bool) {
+        return msg.sender == from && msg.sender.code.length == 0 &&
+            !internalEndpoint[msg.sender] && !internalEndpoint[from] && !internalEndpoint[to];
+    }
+
+    function _transferStepCallGas() internal view returns (uint256) {
+        return uint256(transferStepGasLimit) + POST_CALL_GAS_RESERVE + TRANSFER_STEP_OVERHEAD;
+    }
+
+    function _isProcessing() internal view returns (bool) {
+        return _processing;
+    }
+
+    function _hasReadyAction() internal view returns (bool) {
+        return _pendingReportHead != _pendingReportTail || _selectNext().token != address(0);
     }
 
     /// @dev At most one state-changing executor call. Failure is caught and
@@ -909,6 +928,7 @@ contract LaunchCursorToken is CursorERC20 {
         }
 
         attempted = true;
+        emit StepAttempted(token, step);
         _processing = true;
         _processingToken = token;
         _processingStep = step;
@@ -979,6 +999,7 @@ contract LaunchCursorToken is CursorERC20 {
                 }
             }
             _onSuccess(token, step, source, finalExit);
+            ++successfulExecutorSteps;
             succeeded = true;
             emit StepSucceeded(token, step);
             if (finalExit) emit AllPositionsExited(token);

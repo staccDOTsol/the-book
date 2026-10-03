@@ -502,8 +502,13 @@ class ExitSigner:
         except watch.WatcherError as exc:
             raise WaitForExit(f"{kind} gas simulation failed") from exc
         gas = price.ceil_div(estimate * 120, 100)
+        if kind == "process":
+            try:
+                gas = max(gas, price.process_gas_floor(self.rpc, self.bindings.q))
+            except (watch.WatcherError, price.KeeperError) as exc:
+                raise WaitForExit("Q transferStepGasLimit is unavailable") from exc
         if gas > self.gas_caps[kind]:
-            raise WaitForExit(f"{kind} gas estimate exceeds configured cap")
+            raise WaitForExit(f"{kind} gas requirement exceeds configured cap")
         nonce = watch.quantity(self.rpc.call("eth_getTransactionCount", [self.signer, "pending"]),
                                "nonce")
         latest = self.rpc.call("eth_getBlockByNumber", ["latest", False])
@@ -516,7 +521,8 @@ class ExitSigner:
         if max_fee > self.max_fee_wei:
             raise WaitForExit("exit transaction fee exceeds configured cap")
         signed = self.account.sign_transaction({
-            "chainId": self.chain_id, "nonce": nonce, "to": target, "value": 0,
+            "chainId": self.chain_id, "nonce": nonce,
+            "to": watch.signing_address(target), "value": 0,
             "data": data, "gas": gas, "type": 2, "maxFeePerGas": max_fee,
             "maxPriorityFeePerGas": priority})
         tx_hash = "0x" + signed.hash.hex().lower().removeprefix("0x")
@@ -806,7 +812,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-poke-gas", type=int, default=500000)
     parser.add_argument("--max-wind-down-gas", type=int, default=500000)
     parser.add_argument("--max-config-gas", type=int, default=500000)
-    parser.add_argument("--max-process-gas", type=int, default=3500000)
+    parser.add_argument("--max-process-gas", type=int, default=10000000)
     parser.add_argument("--max-fee-gwei", default="5")
     parser.add_argument("--max-priority-gwei", default="1")
     parser.add_argument("--receipt-timeout", type=int, default=180)

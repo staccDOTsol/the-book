@@ -33,6 +33,7 @@ PONS_FACTORY_GETTER = "0x1e344ad1"  # ponsFactory()
 LAUNCHES = "0x1f2d8550"  # launches(address), first word is Stage
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 HASH = re.compile(r"^0x[0-9a-fA-F]{64}$")
+ZERO_ADDRESS = "0x" + "00" * 20
 
 
 class WatcherError(Exception):
@@ -51,6 +52,12 @@ def address(value: str) -> str:
     if not ADDRESS.fullmatch(value):
         raise WatcherError("expected a 20-byte hex address")
     return value.lower()
+
+
+def signing_address(value: str) -> str:
+    """Return a validated EIP-55 destination accepted by eth_account."""
+    from eth_utils import to_checksum_address
+    return to_checksum_address(address(value))
 
 
 def quantity(value: Any, field: str) -> int:
@@ -86,6 +93,18 @@ def token_from_log(log: dict[str, Any], factory: str) -> str:
         if not isinstance(topic, str) or not HASH.fullmatch(topic):
             raise WatcherError("malformed TokenLaunched topic")
     return result_address(topics[1], "launched token")
+
+
+def pair_token_from_log(log: dict[str, Any]) -> str:
+    """Decode the first non-indexed TokenLaunched field, failing closed on bad ABI data."""
+    data = log.get("data")
+    if not isinstance(data, str) or not data.startswith("0x") or len(data) != 2 + 3 * 64:
+        raise WatcherError("malformed TokenLaunched event data")
+    try:
+        bytes.fromhex(data[2:])
+    except ValueError as exc:
+        raise WatcherError("malformed TokenLaunched event data") from exc
+    return result_address("0x" + data[2:66], "Pons pair token")
 
 
 def block_hash(rpc: Rpc, block_number: int) -> str:
@@ -135,6 +154,12 @@ class HttpRpc:
         self.url, self.timeout, self.request_id = url, timeout, 0
 
     def call(self, method: str, params: list[Any]) -> Any:
+        if method == "eth_sendRawTransaction" and os.environ.get("PONS_BUDGET_REQUIRED") == "1":
+            from pons_tx_budget import budgeted_send_raw
+            return budgeted_send_raw(self, params, lambda: self._call_http(method, params))
+        return self._call_http(method, params)
+
+    def _call_http(self, method: str, params: list[Any]) -> Any:
         self.request_id += 1
         payload = json.dumps({"jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params}).encode()
         # Robinhood's public RPC rejects Python-urllib's default User-Agent
@@ -166,11 +191,12 @@ class Cursor:
     last_block: int
     last_hash: str
     pending: dict[str, Any] | None = None
+    last_log_index: int | None = None
 
     def json(self) -> dict[str, Any]:
         return {"version": 1, "chainId": self.chain_id, "factory": PONS_FACTORY,
                 "q": self.q, "lastBlock": self.last_block, "lastHash": self.last_hash,
-                "pending": self.pending}
+                "lastLogIndex": self.last_log_index, "pending": self.pending}
 
 
 class CursorStore:
@@ -217,12 +243,16 @@ class CursorStore:
                 or data.get("factory") != PONS_FACTORY or data.get("q") != q):
             raise WatcherError("cursor is bound to another Q, chain, or factory")
         last_block, last_hash, pending = data.get("lastBlock"), data.get("lastHash"), data.get("pending")
+        last_log_index = data.get("lastLogIndex")
         if (not isinstance(last_block, int) or last_block < 0 or not isinstance(last_hash, str)
-                or not HASH.fullmatch(last_hash) or (pending is not None and not isinstance(pending, dict))):
+                or not HASH.fullmatch(last_hash) or (pending is not None and not isinstance(pending, dict))
+                or (last_log_index is not None and
+                    (type(last_log_index) is not int or last_log_index < 0 or last_block == 0))):
             raise WatcherError("cursor fields are malformed")
-        if start_block is not None and start_block != last_block + 1:
+        next_block = last_block if last_log_index is not None else last_block + 1
+        if start_block is not None and start_block != next_block:
             raise WatcherError("--start-block conflicts with saved cursor")
-        return Cursor(chain_id, q, last_block, last_hash.lower(), pending)
+        return Cursor(chain_id, q, last_block, last_hash.lower(), pending, last_log_index)
 
     def save(self, cursor: Cursor) -> None:
         # Same-directory replace, file fsync, then directory fsync. Never /tmp.
@@ -252,17 +282,22 @@ def log_order(log: dict[str, Any]) -> tuple[int, int, int]:
 
 
 class Enqueuer(Protocol):
-    def enqueue(self, token: str, source_block: int, cursor: Cursor, store: CursorStore) -> None: ...
+    def enqueue(self, token: str, source_block: int, cursor: Cursor, store: CursorStore) -> bool: ...
 
 
 def backfill_once(rpc: Rpc, sender: Enqueuer, cursor: Cursor, store: CursorStore,
-                  confirmations: int, block_span: int) -> int:
+                  confirmations: int, block_span: int,
+                  max_enqueues: int | None = None) -> int:
+    if max_enqueues is not None and max_enqueues < 1:
+        raise WatcherError("max enqueues per cycle must be positive")
     if block_hash(rpc, cursor.last_block) != cursor.last_hash:
         raise WatcherError("confirmed cursor block hash changed; inspect reorg before resuming")
     safe_head = chain_head(rpc) - confirmations
     processed = 0
-    while cursor.last_block < safe_head:
-        first = cursor.last_block + 1
+    enqueued = 0
+    while cursor.last_block < safe_head or (cursor.last_log_index is not None and
+                                            cursor.last_block <= safe_head):
+        first = cursor.last_block if cursor.last_log_index is not None else cursor.last_block + 1
         last = min(safe_head, first + block_span - 1)
         expected_hash = block_hash(rpc, last)
         logs = rpc.call("eth_getLogs", [{"address": PONS_FACTORY, "topics": [TOKEN_LAUNCHED],
@@ -277,13 +312,33 @@ def backfill_once(rpc: Rpc, sender: Enqueuer, cursor: Cursor, store: CursorStore
                 raise WatcherError("eth_getLogs returned an out-of-range log")
             if str(log.get("blockHash", "")).lower() != block_hash(rpc, number):
                 raise WatcherError("eth_getLogs returned a noncanonical log")
+            log_index = quantity(log.get("logIndex"), "log index")
+            if (cursor.last_log_index is not None and number == cursor.last_block and
+                    log_index <= cursor.last_log_index):
+                continue
             token = token_from_log(log, PONS_FACTORY)
-            sender.enqueue(token, number, cursor, store)
+            pair_token = pair_token_from_log(log)
+            if pair_token == ZERO_ADDRESS:
+                if sender.enqueue(token, number, cursor, store):
+                    enqueued += 1
+            else:
+                print(json.dumps({"block": number, "token": token,
+                                  "pairToken": pair_token,
+                                  "action": "skipped_unsupported_pair"}), flush=True)
             processed += 1
+            if max_enqueues is not None and enqueued >= max_enqueues:
+                if block_hash(rpc, last) != expected_hash:
+                    raise WatcherError("confirmed range changed during enqueue; cursor unchanged")
+                cursor.last_block = number
+                cursor.last_hash = block_hash(rpc, number)
+                cursor.last_log_index = log_index
+                store.save(cursor)
+                return processed
         if block_hash(rpc, last) != expected_hash:
             raise WatcherError("confirmed range changed during enqueue; cursor unchanged")
         cursor.last_hash = expected_hash
         cursor.last_block = last
+        cursor.last_log_index = None
         store.save(cursor)
     return processed
 
@@ -408,15 +463,15 @@ class LiveEnqueuer:
     def owner(self) -> str:
         return self.account.address.lower()
 
-    def enqueue(self, token: str, source_block: int, cursor: Cursor, store: CursorStore) -> None:
+    def enqueue(self, token: str, source_block: int, cursor: Cursor, store: CursorStore) -> bool:
         if stage(self.rpc, self.q, token, max(0, chain_head(self.rpc) - self.confirmations)) != 0:
-            return
+            return False
         for attempt in range(self.enqueue_attempts):
             if stage(self.rpc, self.q, token, max(0, chain_head(self.rpc) - self.confirmations)) != 0:
-                return
+                return False
             try:
                 self._submit_once(token, source_block, cursor, store)
-                return
+                return True
             except EnqueueReverted:
                 cursor.pending = None
                 store.save(cursor)
@@ -438,7 +493,7 @@ class LiveEnqueuer:
         priority = min(quantity(self.rpc.call("eth_maxPriorityFeePerGas", []), "priority fee"), self.max_priority_wei)
         if 2 * base_fee + priority > self.max_fee_wei:
             raise WatcherError("required enqueue max fee exceeds configured cap")
-        tx = {"chainId": self.chain_id, "nonce": nonce, "to": self.q, "value": 0,
+        tx = {"chainId": self.chain_id, "nonce": nonce, "to": signing_address(self.q), "value": 0,
               "data": data, "gas": gas, "type": 2, "maxFeePerGas": 2 * base_fee + priority,
               "maxPriorityFeePerGas": priority}
         signed = self.account.sign_transaction(tx)
@@ -467,9 +522,11 @@ class DryRunEnqueuer:
     def __init__(self, rpc: Rpc, q: str):
         self.rpc, self.q = rpc, q
 
-    def enqueue(self, token: str, source_block: int, cursor: Cursor, store: CursorStore) -> None:
+    def enqueue(self, token: str, source_block: int, cursor: Cursor, store: CursorStore) -> bool:
+        would_enqueue = stage(self.rpc, self.q, token) == 0
         print(json.dumps({"block": source_block, "token": token,
-                          "action": "would_enqueue" if stage(self.rpc, self.q, token) == 0 else "already_enqueued"}), flush=True)
+                          "action": "would_enqueue" if would_enqueue else "already_enqueued"}), flush=True)
+        return would_enqueue
 
 
 def gwei(value: str) -> int:
@@ -483,7 +540,8 @@ def gwei(value: str) -> int:
 
 
 def watch_ws(url: str, rpc: Rpc, sender: Enqueuer, cursor: Cursor, store: CursorStore,
-             confirmations: int, block_span: int, poll_seconds: float) -> None:
+             confirmations: int, block_span: int, poll_seconds: float,
+             max_enqueues: int | None = None) -> None:
     if not url.startswith(("wss://", "ws://")):
         raise WatcherError("websocket URL must use ws or wss")
     from websockets.sync.client import connect
@@ -498,7 +556,7 @@ def watch_ws(url: str, rpc: Rpc, sender: Enqueuer, cursor: Cursor, store: Cursor
                 if not isinstance(response, dict) or not isinstance(response.get("result"), str):
                     raise WatcherError("websocket eth_subscribe failed")
                 print(json.dumps({"status": "subscribed", "lastBlock": cursor.last_block}), flush=True)
-                backfill_once(rpc, sender, cursor, store, confirmations, block_span)
+                backfill_once(rpc, sender, cursor, store, confirmations, block_span, max_enqueues)
                 while True:
                     try:
                         message = json.loads(ws.recv(timeout=poll_seconds))
@@ -508,12 +566,12 @@ def watch_ws(url: str, rpc: Rpc, sender: Enqueuer, cursor: Cursor, store: Cursor
                         result = message.get("params", {}).get("result", {})
                         if isinstance(result, dict) and result.get("removed") is True:
                             continue  # HTTP confirmed-log backfill remains authoritative.
-                    backfill_once(rpc, sender, cursor, store, confirmations, block_span)
+                    backfill_once(rpc, sender, cursor, store, confirmations, block_span, max_enqueues)
         except (ConnectionClosed, InvalidHandshake, OSError, TimeoutError, json.JSONDecodeError):
             print(json.dumps({"status": "websocket_disconnected", "lastBlock": cursor.last_block}), flush=True)
             # HTTP backfill continues while WS is down. The next connection
             # again scans from the saved cursor, so missed notifications are fine.
-            backfill_once(rpc, sender, cursor, store, confirmations, block_span)
+            backfill_once(rpc, sender, cursor, store, confirmations, block_span, max_enqueues)
             time.sleep(min(poll_seconds, 10))
 
 
@@ -529,7 +587,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--block-span", type=int, default=2000)
     parser.add_argument("--poll-seconds", type=float, default=10)
     parser.add_argument("--receipt-timeout", type=int, default=180)
-    parser.add_argument("--enqueue-attempts", type=int, default=3)
+    parser.add_argument("--enqueue-attempts", type=int, default=1)
+    parser.add_argument("--max-enqueues-per-cycle", type=int,
+                        help="bound new enqueues per backfill; live default is one")
     parser.add_argument("--max-gas", type=int, default=500000)
     parser.add_argument("--max-fee-gwei", default="5")
     parser.add_argument("--max-priority-gwei", default="1")
@@ -541,8 +601,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.once and not args.ws_url:
         parser.error("--ws-url is required unless --once is used")
     if (args.confirmations < 1 or args.block_span < 1 or args.poll_seconds <= 0 or
-            args.receipt_timeout < 1 or args.max_gas < 21000 or args.enqueue_attempts < 1):
+            args.receipt_timeout < 1 or args.max_gas < 21000 or args.enqueue_attempts < 1 or
+            args.max_enqueues_per_cycle is not None and args.max_enqueues_per_cycle < 1):
         parser.error("invalid confirmation, block span, poll, receipt, or gas setting")
+    if args.live and args.enqueue_attempts != 1:
+        parser.error("live bounded cycles require --enqueue-attempts 1")
+    max_enqueues = (args.max_enqueues_per_cycle if args.max_enqueues_per_cycle is not None
+                    else (1 if args.live else None))
     q = address(args.q)
     rpc = HttpRpc(args.http_url)
     max_fee_wei, max_priority_wei = gwei(args.max_fee_gwei), gwei(args.max_priority_gwei)
@@ -569,19 +634,24 @@ def main(argv: list[str] | None = None) -> int:
             raise WatcherError("dry run cannot inspect an unresolved signed transaction; use --live recovery")
         if args.live:
             if args.once:
-                backfill_once(rpc, sender, cursor, store, args.confirmations, args.block_span)
+                backfill_once(rpc, sender, cursor, store, args.confirmations,
+                              args.block_span, max_enqueues)
             else:
-                watch_ws(args.ws_url, rpc, sender, cursor, store, args.confirmations, args.block_span, args.poll_seconds)
+                watch_ws(args.ws_url, rpc, sender, cursor, store, args.confirmations,
+                         args.block_span, args.poll_seconds, max_enqueues)
         else:
             # Dry runs use a temporary in-memory cursor. They must never move
             # the durable live cursor past tokens that still need enqueueing.
             class NoSave:
                 def save(self, _cursor: Cursor) -> None: pass
-            probe = Cursor(cursor.chain_id, cursor.q, cursor.last_block, cursor.last_hash)
+            probe = Cursor(cursor.chain_id, cursor.q, cursor.last_block, cursor.last_hash,
+                           last_log_index=cursor.last_log_index)
             if args.once:
-                backfill_once(rpc, sender, probe, NoSave(), args.confirmations, args.block_span)
+                backfill_once(rpc, sender, probe, NoSave(), args.confirmations,
+                              args.block_span, max_enqueues)
             else:
-                watch_ws(args.ws_url, rpc, sender, probe, NoSave(), args.confirmations, args.block_span, args.poll_seconds)
+                watch_ws(args.ws_url, rpc, sender, probe, NoSave(), args.confirmations,
+                         args.block_span, args.poll_seconds, max_enqueues)
     return 0
 
 

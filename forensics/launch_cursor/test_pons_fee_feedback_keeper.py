@@ -24,6 +24,8 @@ Q = "0x" + "11" * 20
 X = "0x" + "77" * 20
 POOL = "0x" + "aa" * 32
 H = {n: "0x" + f"{n:064x}" for n in range(1, 20)}
+Q_CREATION_BLOCK = 79_266_048
+Q_ETH_LAUNCH_BLOCK = 79_267_280
 
 
 def observation() -> dict:
@@ -43,6 +45,25 @@ class QuoteRpc:
         if method == "eth_getBlockByNumber":
             n = int(params[0], 16)
             return {"hash": H[n], "timestamp": hex(n * 12)}
+        raise AssertionError(method)
+
+
+class FreshDeploymentRpc:
+    def __init__(self):
+        self.head = Q_CREATION_BLOCK + 6
+        self.log_queries = []
+
+    def call(self, method: str, params: list):
+        if method == "eth_getCode":
+            return "0x" if int(params[1], 16) < Q_CREATION_BLOCK else "0x6000"
+        if method == "eth_getBlockByNumber":
+            n = int(params[0], 16)
+            return {"hash": "0x" + f"{n:064x}", "timestamp": hex(n * 12)}
+        if method == "eth_blockNumber":
+            return hex(self.head)
+        if method == "eth_getLogs":
+            self.log_queries.append(params[0])
+            return []
         raise AssertionError(method)
 
 
@@ -123,6 +144,42 @@ class RecoveryRpc(SigningRpc):
 
 
 class FeeFeedbackTests(unittest.TestCase):
+    def test_deployment_start_with_no_outcomes_waits_and_persists_cursor(self):
+        rpc = FreshDeploymentRpc()
+        binding = report.Bindings(Q, "0x" + "22" * 20, "0x" + "33" * 20,
+                                  "0x" + "44" * 20, report.ZERO, "0x" + "55" * 20,
+                                  "0x" + "00" * 32, "0x" + "00" * 32)
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(feedback, "LOCAL", Path(tmp)), \
+             patch.object(report, "LOCAL", Path(tmp)):
+            path = Path(tmp) / "pons-fee-feedback.json"
+            safe_head = Q_CREATION_BLOCK + 3
+            state = feedback._load_state(rpc, path, Q, "0x" + "66" * 20,
+                                         Q_CREATION_BLOCK, safe_head)
+            first = feedback.cycle(rpc, binding, None, state, None, 3, 1000, 100, 2)
+            self.assertEqual(first["scannedThrough"], safe_head)
+            self.assertEqual(first["pending"], 0)
+            self.assertEqual(first["actions"], [])
+            self.assertEqual(first["writesSent"], 0)
+            self.assertTrue(path.exists())
+            self.assertEqual(rpc.log_queries[0]["fromBlock"], hex(Q_CREATION_BLOCK))
+            self.assertEqual(rpc.log_queries[0]["toBlock"], hex(safe_head))
+            resumed = feedback._load_state(rpc, path, Q, "0x" + "66" * 20,
+                                           None, safe_head)
+            rpc.head += 1
+            second = feedback.cycle(rpc, binding, None, resumed, None, 3, 1000, 100, 2)
+            self.assertEqual(second["scannedThrough"], safe_head + 1)
+            self.assertEqual(second["actions"], [])
+
+    def test_post_deployment_start_is_rejected_to_preserve_mint_history(self):
+        rpc = FreshDeploymentRpc()
+        with tempfile.TemporaryDirectory() as tmp, patch.object(feedback, "LOCAL", Path(tmp)):
+            path = Path(tmp) / "pons-fee-feedback.json"
+            with self.assertRaisesRegex(feedback.FeedbackError, "start block follows Q deployment"):
+                feedback._load_state(rpc, path, Q, "0x" + "66" * 20,
+                                     Q_ETH_LAUNCH_BLOCK, Q_ETH_LAUNCH_BLOCK + 3)
+            self.assertFalse(path.exists())
+
     def test_gross_score_uses_minted_q_and_all_lifetime_burns(self):
         row = observation()
         score = feedback.gross_mark_score(row, 500, 400)

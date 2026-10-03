@@ -24,9 +24,11 @@ def word_address(value: str) -> str:
     return "0x" + value[2:].rjust(64, "0")
 
 
-def log(block: int, index: int, token: str) -> dict:
+def log(block: int, index: int, token: str,
+        pair_token: str = watcher.ZERO_ADDRESS) -> dict:
     return {"address": watcher.PONS_FACTORY, "topics": [watcher.TOKEN_LAUNCHED,
             word_address(token), word_address(OWNER), word_address(OWNER)],
+            "data": word_address(pair_token) + f"{1:064x}" + f"{2:064x}",
             "blockNumber": hex(block), "transactionIndex": "0x0", "logIndex": hex(index),
             "blockHash": "0x" + f"{block:064x}", "removed": False}
 
@@ -81,10 +83,11 @@ class FakeEnqueuer:
         self.rpc, self.fail, self.calls = rpc, fail, []
 
     def enqueue(self, token: str, source_block: int, cursor, store):
-        if self.rpc.stages.get(token, 0): return
+        if self.rpc.stages.get(token, 0): return False
         self.calls.append((token, source_block))
         if token == self.fail: raise watcher.WatcherError("simulated enqueue failure")
         self.rpc.stages[token] = 1
+        return True
 
 
 class WatcherTests(unittest.TestCase):
@@ -129,6 +132,69 @@ class WatcherTests(unittest.TestCase):
         rpc, cursor = MockRpc(logs=[bad]), self.cursor()
         with self.assertRaisesRegex(watcher.WatcherError, "noncanonical"):
             watcher.backfill_once(rpc, FakeEnqueuer(rpc), cursor, MemoryStore(), 2, 10)
+        self.assertEqual(cursor.last_block, 10)
+
+    def test_non_eth_launch_is_skipped_before_enqueue_and_cursor_advances(self):
+        rpc = MockRpc(logs=[log(11, 0, X1, X2), log(12, 0, X2)])
+        cursor, store, sender = self.cursor(), MemoryStore(), FakeEnqueuer(rpc)
+        count = watcher.backfill_once(rpc, sender, cursor, store, 2, 10)
+        self.assertEqual(count, 2)
+        self.assertEqual(sender.calls, [(X2, 12)])
+        self.assertEqual(cursor.last_block, 14)
+        self.assertEqual(store.saved[-1]["lastBlock"], 14)
+
+    def test_bounded_cycle_resumes_after_exact_log_within_same_block(self):
+        rpc = MockRpc(logs=[log(11, 0, X1, X2), log(12, 1, X1),
+                            log(12, 2, X2), log(13, 0, Q)])
+        cursor, store, sender = self.cursor(), MemoryStore(), FakeEnqueuer(rpc)
+        watcher.backfill_once(rpc, sender, cursor, store, 2, 10, max_enqueues=1)
+        self.assertEqual(sender.calls, [(X1, 12)])
+        self.assertEqual((cursor.last_block, cursor.last_log_index), (12, 1))
+        self.assertEqual(store.saved[-1]["lastLogIndex"], 1)
+        watcher.backfill_once(rpc, sender, cursor, store, 2, 10, max_enqueues=1)
+        self.assertEqual(sender.calls, [(X1, 12), (X2, 12)])
+        self.assertEqual((cursor.last_block, cursor.last_log_index), (12, 2))
+        watcher.backfill_once(rpc, sender, cursor, store, 2, 10, max_enqueues=1)
+        self.assertEqual(sender.calls, [(X1, 12), (X2, 12), (Q, 13)])
+        watcher.backfill_once(rpc, sender, cursor, store, 2, 10, max_enqueues=1)
+        self.assertEqual((cursor.last_block, cursor.last_log_index), (14, None))
+
+    def test_bounded_cycle_skips_already_enqueued_without_using_quota(self):
+        rpc = MockRpc(logs=[log(11, 0, X1), log(12, 0, X2)])
+        rpc.stages[X1] = 1
+        cursor, store, sender = self.cursor(), MemoryStore(), FakeEnqueuer(rpc)
+        watcher.backfill_once(rpc, sender, cursor, store, 2, 10, max_enqueues=1)
+        self.assertEqual(sender.calls, [(X2, 12)])
+        self.assertEqual((cursor.last_block, cursor.last_log_index), (12, 0))
+
+    def test_bounded_cycle_reloads_mid_block_position_after_restart(self):
+        path = watcher.LOCAL / f"test-pons-watcher-{uuid4().hex}.json"
+        rpc = MockRpc(logs=[log(12, 1, X1), log(12, 2, X2)])
+        sender = FakeEnqueuer(rpc)
+        try:
+            with watcher.CursorStore(path) as store:
+                cursor = store.load(rpc, 0x1337, Q, 11)
+                watcher.backfill_once(rpc, sender, cursor, store, 2, 10,
+                                      max_enqueues=1)
+            with watcher.CursorStore(path) as store:
+                cursor = store.load(rpc, 0x1337, Q, None)
+                self.assertEqual((cursor.last_block, cursor.last_log_index), (12, 1))
+                watcher.backfill_once(rpc, sender, cursor, store, 2, 10,
+                                      max_enqueues=1)
+            self.assertEqual(sender.calls, [(X1, 12), (X2, 12)])
+        finally:
+            path.unlink(missing_ok=True)
+            path.with_suffix(path.suffix + ".lock").unlink(missing_ok=True)
+
+    def test_malformed_pair_token_data_stops_before_enqueue_or_cursor_commit(self):
+        bad = log(11, 0, X1)
+        bad["data"] = "0x" + "0" * 23 + "1" + "0" * (3 * 64 - 24)
+        rpc, cursor, store = MockRpc(logs=[bad]), self.cursor(), MemoryStore()
+        sender = FakeEnqueuer(rpc)
+        with self.assertRaisesRegex(watcher.WatcherError, "pair token"):
+            watcher.backfill_once(rpc, sender, cursor, store, 2, 10)
+        self.assertEqual(sender.calls, [])
+        self.assertEqual(store.saved, [])
         self.assertEqual(cursor.last_block, 10)
 
     def test_contract_binding_and_owner_checked_before_writes(self):
@@ -202,6 +268,8 @@ class WatcherTests(unittest.TestCase):
         signature = "TokenLaunched(address,address,address,address,uint256,uint256)"
         self.assertEqual("0x" + keccak(text=signature).hex(), watcher.TOKEN_LAUNCHED)
         self.assertEqual(watcher.token_from_log(log(11, 0, X1), watcher.PONS_FACTORY), X1)
+        self.assertEqual(watcher.pair_token_from_log(log(11, 0, X1)), watcher.ZERO_ADDRESS)
+        self.assertEqual(watcher.pair_token_from_log(log(11, 0, X1, X2)), X2)
 
     def test_signed_transaction_targets_only_q_enqueue(self):
         rpc, cursor, store = MockRpc(head=22), self.cursor(), MemoryStore()
@@ -272,10 +340,12 @@ class WatcherTests(unittest.TestCase):
                 cursor = store.load(rpc, 0x1337, Q, 11)
                 self.assertEqual(cursor.last_block, 10)
                 cursor.last_block, cursor.last_hash = 12, "0x" + f"{12:064x}"
+                cursor.last_log_index = 3
                 store.save(cursor)
             with watcher.CursorStore(path) as store:
                 restored = store.load(rpc, 0x1337, Q, None)
             self.assertEqual(restored.last_block, 12)
+            self.assertEqual(restored.last_log_index, 3)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         finally:
             path.unlink(missing_ok=True)
