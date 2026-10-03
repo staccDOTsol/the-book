@@ -137,7 +137,13 @@ class HttpRpc:
     def call(self, method: str, params: list[Any]) -> Any:
         self.request_id += 1
         payload = json.dumps({"jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params}).encode()
-        req = request.Request(self.url, data=payload, headers={"Content-Type": "application/json"})
+        # Robinhood's public RPC rejects Python-urllib's default User-Agent
+        # with HTTP 403. Use an explicit client identifier for all keepers,
+        # which share this transport.
+        req = request.Request(
+            self.url, data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "the-book-pons-cranker/1.0"},
+        )
         try:
             with request.urlopen(req, timeout=self.timeout) as response:
                 result = json.load(response)

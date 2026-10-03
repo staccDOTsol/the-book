@@ -33,6 +33,10 @@ Set these process environment variables at runtime:
 | `PONS_Q_ADDRESS` | Deployed hookless Q contract address |
 | `PONS_OWNER_PRIVATE_KEY` | Q owner's key, required only with `--live`; supplied in the process environment, never read from a file |
 
+The shared HTTP transport sends an explicit client User-Agent. Robinhood's
+public RPC returned HTTP 403 to Python-urllib's default User-Agent in a
+read-only smoke check; `eth_chainId` succeeded with the explicit identifier.
+
 For the first run, choose `--start-block` at or before the earliest Pons launch
 that Q should receive. It is inclusive. The flag is mandatory when the cursor
 does not yet exist; subsequent runs use the saved cursor and omit it. A
@@ -89,10 +93,9 @@ The watcher cannot undo an enqueue that was already finalized if the Pons
 launch itself later disappears in a deeper reorg.
 
 The watcher does not configure a price, mint an LP, monitor range boundaries,
-exit positions, or fund Q. The separate price keeper and Q/executor paths
-described in [README.md](README.md) remain necessary. The hookless prototype
-has incomplete normal exit and payout paths; this watcher alone does not make
-it safe to fund or deploy for live trading.
+exit positions, or fund Q. The separate price and exit keepers and Q/executor
+paths described in [README.md](README.md) remain necessary. Q has not been
+launched or funded, and this watcher alone does not make live trading ready.
 
 Offline verification:
 
