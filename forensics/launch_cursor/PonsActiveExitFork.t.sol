@@ -9,7 +9,7 @@ import {
 } from "./PonsActiveExitAdapter.sol";
 
 interface IPonsActiveForkVm {
-    function createSelectFork(string calldata rpcUrl, uint256 blockNumber) external returns (uint256);
+    function createSelectFork(string calldata rpcUrl) external returns (uint256);
     function deal(address account, uint256 newBalance) external;
     function expectRevert(bytes calldata revertData) external;
 }
@@ -31,12 +31,11 @@ contract PonsActiveExitForkTest {
     address private constant X = 0xeB765696eE5905ce1D06D72280dEFB2cE426115d;
     address private constant CURVE = 0x9d4bcCd80332ba9CcCC75657B560Bb89265462aD;
     address payable private constant RECIPIENT = payable(address(0xBEEF));
-    uint256 private constant FORK_BLOCK = 78_908_973;
     uint256 private constant BUY_ETH = 0.001 ether;
     bytes4 private constant CURVE_SLIPPAGE = bytes4(keccak256("SlippageExceeded(uint256,uint256)"));
 
     function testSellRealActiveNativeLaunchOnRobinhoodFork() external {
-        vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com", FORK_BLOCK);
+        vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com");
         require(block.chainid == 4663, "not Robinhood");
 
         IPonsActiveExitFactory.LaunchedToken memory launch =

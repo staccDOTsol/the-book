@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {PonsGraduatedSwapAdapter, IPonsGraduatedToken} from "./PonsGraduatedSwapAdapter.sol";
 
 interface IPonsGraduatedForkVm {
-    function createSelectFork(string calldata rpcUrl, uint256 blockNumber) external returns (uint256);
+    function createSelectFork(string calldata rpcUrl) external returns (uint256);
     function startPrank(address sender) external;
     function stopPrank() external;
     function expectRevert(bytes4 selector) external;
@@ -19,10 +19,9 @@ contract PonsGraduatedSwapForkTest {
     address private constant FACTORY = 0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e;
     address private constant X = 0x6C7C3113bFa9EeF3E716A4912D9B0dc47AEFE796;
     address private constant SOURCE = 0x2E05B44DC8682Aa5497eeB3f1C44dDa3f204F0CC;
-    uint256 private constant FORK_BLOCK = 78_909_215;
 
     function testSellNativeGraduatedPoolOnRobinhoodFork() external {
-        vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com", FORK_BLOCK);
+        vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com");
         require(block.chainid == 4663, "not Robinhood");
 
         PonsGraduatedSwapAdapter adapter = new PonsGraduatedSwapAdapter(FACTORY, SOURCE);

@@ -3,6 +3,10 @@ pragma solidity ^0.8.26;
 
 import {OpenPriceGuard, IOpenPricePonsFactory, IOpenPriceStateView} from "./OpenPriceGuard.sol";
 
+interface IOpenPriceGuardForkVm {
+    function createSelectFork(string calldata rpcUrl) external returns (uint256);
+}
+
 /// @dev Q has code and a v4 pool key, but is deliberately not deployed on Robinhood.
 contract OpenPriceForkSyntheticQuote {
     string public constant name = "Fork Synthetic Q";
@@ -51,6 +55,8 @@ contract OpenPriceForkStateView is IOpenPriceStateView {
 
 /// @notice Runs on a Robinhood mainnet fork. All contracts deployed here are local to the test EVM.
 contract OpenPriceGuardForkTest {
+    IOpenPriceGuardForkVm private constant vm =
+        IOpenPriceGuardForkVm(address(uint160(uint256(keccak256("hevm cheat code")))));
     address private constant PONS_FACTORY = 0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e;
     address private constant PONS_HOOK = 0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044;
     address private constant STATE_VIEW = 0xF3334192D15450CdD385c8B70e03f9A6bD9E673b;
@@ -61,6 +67,7 @@ contract OpenPriceGuardForkTest {
     uint16 private constant MAX_DEVIATION_BPS = 1_000;
 
     function _guard() private returns (OpenPriceGuard guard, OpenPriceForkStateView wrapped) {
+        vm.createSelectFork("https://rpc.mainnet.chain.robinhood.com");
         require(block.chainid == 4663, "run with Robinhood fork");
         OpenPriceForkSyntheticQuote q = new OpenPriceForkSyntheticQuote();
         bytes32 quoteEthPoolId =

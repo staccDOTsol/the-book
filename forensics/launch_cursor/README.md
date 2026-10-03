@@ -1,136 +1,116 @@
-# Hookless Pons X/Q pool prototype
+# Hookless Pons X/Q prototype
 
-This directory contains a **compileable, un-deployed prototype**. `Q` is a
-custom, fixed-supply ERC-20 intended for the underlying Pools.xyz
-LiquidityLauncher path. A separate Uniswap v4 pool pairs each eligible Pons
-launch token `X` with `Q`. These X/Q pools have **no hook**. Their static fee
-is chosen for each *new pool*, from 5% to 50%, using prior completed outcomes.
-The existing Pools.xyz Q/ETH launch pool keeps its own fixed fee.
-Build with the Solidity optimizer: Solc 0.8.26 at 200 runs produces an
-18,640-byte Q runtime; the unoptimized runtime exceeds the EVM
-24,576-byte contract-size limit. Remeasure optimized size after edits.
+This directory contains an **undeployed** fixed-supply `Q` ERC-20, a LIFO
+launch cursor, and a vault for independent Uniswap v4 `X/Q` pools. `X` is a
+Pons launch token. Each new pool has no hook and receives one fixed fee chosen
+from 5–50%; the existing Pools.xyz `Q/ETH` launch pool has separate terms.
+The current code opens **one Q-only LP position** per eligible launch, then
+withdraws at the first *observed* one-sided boundary after range entry.
 
-## Contracts and actual flow
+## Components and flow
 
-1. [LaunchCursorToken.sol](LaunchCursorToken.sol) supplies Q and the LIFO
-   scheduler. An owner-controlled log watcher calls `enqueue(X)` after a
-   Pons `TokenLaunched` event; Q verifies the factory record in phase 0–2,
-   including a fast graduation before the watcher submits it. Enqueueing does
-   **not** authorize an LP mint. The launch waits until a separate automated
-   price keeper calls `configureOpen(X, config)` through Q. This configures
-   bounded Q spend, short deadline, starting v4 price, liquidity, and ticks,
-   then arms the entry. An owner can assign a separate `priceConfigurator`;
-   the launch watcher itself can remain enqueue-only.
-2. [StaticNextPoolFee.sol](StaticNextPoolFee.sol) samples one fee per X. It
-   explores 46 integer-percent arms (5–50%) on 15% of assignments; otherwise
-   it selects the highest mean completed net return. A failed open retries
-   with the **same** fee. There is no dynamic fee and no v4 hook. Censored
-   launches are counted separately; the current selector does not correct
-   survivorship or time-of-day bias.
-3. [HooklessLPExecutor.sol](HooklessLPExecutor.sol) can atomically initialize
-   a new static-fee, zero-hook X/Q pool and mint one **Q-only** v4 position.
-   It checks the minted NFT, LP liquidity, token balance delta, pool price,
-   fee, and spend cap. It owns that NFT. It can inspect current price,
-   mark range entry, collect LP fees, and mechanically withdraw at a verified
-   one-sided boundary. It requires valuable Q already deposited in the vault
-   and a trusted, executable X/Q configuration. Opening is disabled until a
-   matching price guard is bound.
-4. [PositionInspector.sol](PositionInspector.sol) is permissionless. `poke(X)`
-   reads the executor's current tick, records range entry, and reports the
-   first **observed** all-Q or all-X boundary to Q. A complete jump from the
-   initial Q-only side to the X-only side can record entry and exit readiness
-   in the same observation. A boundary touched and reversed before any poke
-   can be missed. A keeper must still call `poke` for active positions; Q
-   transfers cannot identify all v4 pools or read their history.
-   `pokeHarvest(X)` can report a fee claim only after the executor supplies a
-   nonzero executable fee-value preview; the current executor deliberately
-   reverts from that preview, so harvests stay disabled.
-5. [OpenPriceGuard.sol](OpenPriceGuard.sol) checks the proposed starting
-   X/Q price against the **current marginal spot** from Pons X/ETH and the
-   actual Q/ETH launch pool, in the same transaction as mint. It accepts
-   active curve phase 0 and graduated v4 phase 2; swept phase 1 waits. Its
-   bound is capped at 10%, requires in-range Q/ETH liquidity, and cannot measure route depth, taxes, or price
-   impact. It is a sanity check, not an executable-price oracle.
+1. [pons_launch_watcher.py](pons_launch_watcher.py) consumes confirmed factory
+   `TokenLaunched` logs. WebSocket notices wake it, while HTTP log backfill
+   and a durable cursor cover disconnections. Its only contract write is the
+   owner-signed `LaunchCursorToken.enqueue(X)`, which verifies the factory
+   record and puts `X` on a LIFO stack.
+2. [pons_price_keeper.py](pons_price_keeper.py) checks a recent pinned-block
+   executable X-to-ETH route, the Q/ETH route, Q budget, tick ordering, and
+   the bound onchain guards before signing `Q.configureOpen(X, config)`. Its
+   default budget is 25% of **idle vault Q**, after reserved harvested Q.
+   An unconfigured launch remains queued.
+3. [LaunchCursorToken.sol](LaunchCursorToken.sol) schedules configured opens,
+   ready exits, and optional fee harvests. An eligible direct EOA `Q`
+   transfer can attempt one stage when it supplies enough gas; anyone can
+   call `processNext()` if transfers are quiet. The transaction caller pays
+   gas. `Q` excludes internal settlement transfers from recursive cursor
+   work. [StaticNextPoolFee.sol](StaticNextPoolFee.sol) fixes one fee per `X`
+   across retries. Its 46 fee arms are **not calibrated**: until comparable
+   net outcomes exist, assignments remain exploratory.
+4. [HooklessLPExecutor.sol](HooklessLPExecutor.sol) atomically initializes an
+   empty zero-hook pool and mints one Q-only position. It binds both
+   [OpenPriceGuard.sol](OpenPriceGuard.sol), a same-transaction marginal spot
+   sanity check, and [OpenExecutableDepthGuard.sol](OpenExecutableDepthGuard.sol),
+   a same-transaction check of the full LP band’s maximum possible X
+   inventory against executable Pons X/ETH and Q/ETH routes. The selected
+   pool fee never changes after creation. Both guards must be bound before
+   opening. A stale quote, insufficient depth, wrong phase, bad tick band,
+   or an already initialized PoolKey rejects the open.
+5. [PositionInspector.sol](PositionInspector.sol) reports range entry and
+   one-sided boundary observations. [pons_exit_keeper.py](pons_exit_keeper.py)
+   tracks open positions, checks `inspect` offchain before paying for `poke`,
+   simulates the LP withdrawal, obtains size-aware sale and Q-buy bounds, and
+   submits `Q.configureExit` followed by `Q.processNext`. A swept Pons
+   phase waits and retries if recovered `X` needs to be sold; an all-Q exit
+   can settle without that sale. Polling can miss a transient touch and reversal:
+   the enforceable trigger is the **first observed** boundary, with no timer.
+6. `executor.exit` burns the active LP, includes prior collected fees, and
+   calls [ExitSettlementRouter.sol](ExitSettlementRouter.sol). The router
+   sells recovered `X` through the active Pons curve or graduated v4 pool,
+   spends half of that ETH buying `Q` through Q/ETH, burns bought and
+   recovered `Q`, wraps half the remaining ETH for the Squarefun wizard
+   fanout, and sends the other half as native ETH to the developer. Positive
+   minimum outputs and a short deadline bound the swaps. An all-Q exit burns
+   Q without a sale or payout.
 
-The scheduler prioritizes ready exits, then configured LIFO entries, then
-LP-fee harvests. An eligible direct EOA Q transfer with enough gas attempts
-one action; `processNext()` is permissionless when transfers are quiet.
-Contract/v4 settlement transfers are excluded to avoid nested PoolManager
-operations. Each caller pays the gas for its attempt. A retry backoff avoids
-one failed open/exit blocking later launches. The owner can skip a stale
-queued launch, and the automatic transfer step can be disabled. An explicit
-owner `emergencyAbort(X)` burns an active LP at any price and sends the
-recovered X and Q to the owner. `rescueHeldERC20` returns unused vault Q and
-previously collected assets. These are recovery paths outside the normal
-burn/fanout payout policy.
+The watcher, price keeper, and exit keeper have separate durable signed
+transaction journals. The two keepers use the same price-configurator signer;
+[pons_keeper_supervisor.py](pons_keeper_supervisor.py) runs their live `--once`
+cycles serially so their nonces cannot race, while the owner-signed watcher
+runs independently. [exit_keeper.md](exit_keeper.md) documents startup and
+recovery. No live daemon, deployment, Q launch, LP, or trade is running from
+this prototype.
 
 ## Bootstrap and trust boundary
 
-Deploy the executor first with the Robinhood PoolManager, PositionManager,
-StateView and Permit2 addresses. Deploy the inspector pointing at it. Deploy
-Q pointing at that executor and inspector, with exactly 1 billion units at 18
-decimals if the intended Pools.xyz Instant Launch route is used. Then call
-`executor.bindController(Q)` from its deployer and `inspector.bindCursor(Q)`
-from any account. This reciprocal binding resolves the constructor cycle.
-After Q/ETH is launched, deploy `OpenPriceGuard` with Q's **actual** Q/ETH
-fee and tick spacing, then have the executor deployer call
-`executor.bindPriceGuard(guard)`. This opens the mint path only after the
-guard's Q, StateView, and Pons factory links match the executor. These steps
-do **not** launch Q. The underlying LiquidityLauncher supports an
-existing custom token via atomic `depositToken` + `distributeToken`, whereas
-the ordinary Pools.xyz UI does not expose this route. The launcher locks the
-whole initial Q supply in the Q/ETH position; the executor needs to acquire
-Q separately for X/Q pools.
-The Q constructor enforces exactly 1 billion 18-decimal units for this route.
+Deploy the executor with the Robinhood PoolManager, PositionManager,
+StateView, and Permit2. Deploy the inspector, then deploy exactly 1 billion
+18-decimal `Q` units with that executor and inspector. Bind Q as executor
+controller and as inspector cursor. After the actual `Q/ETH` launch pool
+exists, deploy the spot guard and settlement router with its real fee and
+tick spacing, then deploy the executable depth guard using the official
+Robinhood v4 Quoter. Bind the spot guard, settlement router, and depth guard
+to the executor. The contracts check reciprocal identities; deployment
+scripts still need to verify all addresses and the intended developer and
+Squarefun fanout recipients before funding. These steps do **not** launch Q.
 
-The price keeper is trusted. It must filter unsupported Pons pair assets,
-price X and Q through **executable** ETH routes, validate current reserves and
-fees, select the intended quote-only tick band, set a short deadline and
-bounded Q amount, and revalidate before submitting. An untrusted spot or
-arbitrary initial X/Q price can donate the vault's Q to arbitrageurs. The
-same-transaction guard limits deviation from **spot**, but still does not
-enforce executable prices, size-aware curve quotes, or a TWAP. Another account
-can initialize a selected PoolKey first, causing this executor's open to
-fail; the owner can then skip that launch.
+The underlying Pools.xyz LiquidityLauncher supports an existing custom token
+through atomic `depositToken` plus `distributeToken`; the ordinary Pools.xyz
+UI does not expose this route. Its launch locks the initial Q supply in the
+Q/ETH position. The executor must acquire valuable Q separately for X/Q
+pools. A transfer-triggered cursor does not make LP inventory or gas free.
 
-## Incomplete execution paths
+The price configurator is trusted to select admissible ETH-paired Pons
+launches and a fair Q-only band. The onchain depth guard checks liquidity
+**at open**, but no spot/depth check guarantees future volume, fee income,
+or recoverable ETH at exit. A third party can initialize a selected pool
+first. Non-ETH Pons pairs are unsupported by these routes. Interim LP fee
+claims are disabled because `previewHarvest` does not provide a reliable
+executable ETH valuation; the final burn collects accrued fees.
 
-`executor.previewHarvest` and `executor.exit` deliberately revert
-`OutcomeUnavailable`. They require executable ETH valuation of fees, gas
-estimation, X liquidation through the active Pons curve or a graduated pool,
-Q burning, WETH wizard-fanout transfer, developer ETH payout, and net-return
-accounting. `withdrawPosition` only demonstrates mechanical LP removal; Q
-does not expose that *normal-exit* path. `emergencyAbort` is reachable and
-was tested on a Robinhood fork, but it requires the owner to intervene and
-does not execute the requested liquidation, burn, or payouts. **Do not fund
-this prototype with live assets.** There is no live position, trade, launch,
-or realized profit from this code. The active-curve and graduated-v4 sale
-adapters are standalone components; normal exit, Q conversion and burn,
-recipient payouts, and outcome accounting must be integrated and tested
-before deployment.
-
-An exit is triggered by a one-sided boundary **after** range entry. There is
-no timer exit. Fee collection before exit is optional and only makes sense
-when early conversion/distribution value exceeds its *incremental* gas. The
-full LP burn at exit would collect accrued fees anyway. An eventual preview
-must value claimable X and Q at executable ETH prices and estimate all claim
-and conversion gas; the cursor currently requires gross fee value above
-twice its configured gas-price ceiling times estimated units.
+Successful exits are currently reported to the fee selector as **censored**:
+the contracts settle assets but do not know comparable ETH-valued net ROI,
+including Q cost basis, burned Q value, and gas. The adaptive selector
+therefore has no valid profitability feedback yet. Owner emergency unwind
+and asset rescue remain recovery paths outside normal burn and payout policy.
+Do not fund the prototype with live assets until deployment, exact recipient
+binding, end-to-end execution, and outcome accounting are verified.
 
 ## Verification
 
-Solc 0.8.26 with optimization and 200 runs compiled the contracts. Five
-local integration tests passed. A read-only Robinhood RPC fork test also
-initialized real Uniswap v4 zero-hook pools, minted Q-only positions, then
-burned the LPs and recovered Q through the owner emergency path using the
-deployed PositionManager in **both** token-address orderings.
-The fork used a mock Pons factory and mock price guard because Q has not been
-launched; it proves the v4 mint path, not the strategy's market prices, fees,
-exit, or profitability. No fork test broadcasts a transaction.
+Solc 0.8.26 with optimization and 200 runs produced a 24,048-byte executor
+runtime (528 bytes below EIP-170), a 5,080-byte depth guard, and a
+19,481-byte Q runtime. Recheck size after any change to the executor. Local
+tests cover LIFO scheduling, guarded entry, boundary
+readiness, settlement accounting, and failure paths. Read-only Robinhood
+fork tests cover real v4 mint and burn in both token-address orderings,
+active-curve and graduated Pons sales, Q/ETH buys, the integrated exit route,
+and the same-transaction depth guard. [HooklessFullCycleFork.t.sol](HooklessFullCycleFork.t.sol)
+combines a real X/Q LP mint, a swap through its range, a real NFT burn, and
+the Pons sale/Q buy/burn/payout route. Its complete exit used 1,002,400 gas,
+below the 3 million cursor cap. Synthetic Q/ETH liquidity is used because Q
+has not been launched. Tests do not broadcast a transaction or establish
+profitability.
 
-Separate read-only Robinhood fork tests passed for a real graduated Pons
-X/ETH v4 sale, a real active Pons X/ETH curve sale, and the graduated
-cross-price guard with a synthetic Q/ETH price. Both sale adapters are
-standalone: the executor does not yet call them. While no closed outcomes
-exist, `StaticNextPoolFee` explores every fee assignment; it cannot learn a
-best fee until complete exits report comparable net returns.
+For discovery cadence and the economic limits, see
+[the strategy record](../record/160-pons-every-launch-pool-plan.md).

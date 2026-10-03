@@ -21,7 +21,7 @@ contract StaticNextPoolFee {
     int32 public constant MAX_ABS_RETURN_BPS = 10_000;
 
     enum Status { None, Selected, Closed, Censored }
-    enum CensorReason { None, NeverOpened, NoTrade, StuckUnwound }
+    enum CensorReason { None, NeverOpened, NoTrade, StuckUnwound, UnvaluedExit }
 
     struct Assignment {
         uint24 feePips;
@@ -118,9 +118,10 @@ contract StaticNextPoolFee {
     }
 
     /// @notice Terminal observations without a comparable realized outcome
-    /// are counted but excluded from the mean return. The controller must
-    /// only call this after it confirms that no position remains open (or an
-    /// entry was permanently skipped). An active, stuck position stays
+    /// are counted but excluded from the mean return. This includes a fully
+    /// completed exit whose Q burn cannot yet be valued in ETH. The controller
+    /// must only call this after it confirms that no position remains open (or
+    /// an entry was permanently skipped). An active, stuck position stays
     /// Selected; it must not be reported as a zero-return closed position.
     function recordCensored(address token, CensorReason reason) external onlyController {
         Assignment storage assignment = assignments[token];

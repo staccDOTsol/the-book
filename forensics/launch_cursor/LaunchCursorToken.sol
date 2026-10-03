@@ -37,9 +37,10 @@ interface IPonsV2LaunchFactoryCursor {
 /// none of those operations; a no-op executor advances its cursor unsafely.
 interface ILaunchCursorExecutor {
     function open(address launchToken, uint24 feePips) external;
-    /// @notice Must finish LP withdrawal, liquidation, burns, and payouts,
-    /// returning a bounded net-return observation for fee-policy feedback.
-    function exit(address launchToken) external returns (int32 netReturnBps);
+    /// @notice Must finish LP withdrawal, liquidation, burns, and payouts.
+    /// A completed but unvalued exit must be censored by the fee selector,
+    /// rather than reported as an invented net return.
+    function exit(address launchToken) external returns (int32 netReturnBps, bool comparable);
     /// @notice Return claimable fees expressed as gross ETH value and the gas
     /// units expected for this cursor's whole harvest transaction.
     function previewHarvest(address launchToken) external view returns (uint256 grossEthValue, uint256 estimatedGasUnits);
@@ -66,6 +67,18 @@ interface ILaunchCursorConfigurator {
     }
 
     function configureOpen(address token, OpenConfig calldata config) external;
+}
+
+interface ILaunchCursorExitConfigurator {
+    struct ExitConfig {
+        uint128 minTokenOut;
+        uint128 minQuoteOut;
+        uint256 minEthOut;
+        uint256 minQOut;
+        uint64 deadline;
+    }
+
+    function configureExit(address token, ExitConfig calldata config) external;
 }
 
 /// @notice Small standalone ERC-20 base with the OpenZeppelin 5-style `_update`
@@ -245,6 +258,10 @@ contract LaunchCursorToken is CursorERC20 {
     event HeldAssetRescued(address indexed token, uint256 amount);
     event PriceConfiguratorSet(address indexed configurator);
     event OpenPriceConfigured(address indexed token, uint160 sqrtPriceX96, uint128 maxQuoteIn);
+    event ExitBoundConfigured(
+        address indexed token, uint128 minTokenOut, uint128 minQuoteOut,
+        uint256 minEthOut, uint256 minQOut, uint64 deadline
+    );
     event SkippedEntryRemoved(address indexed token);
     event InternalEndpointSet(address indexed endpoint, bool internalCall);
     event AutomaticSet(bool enabled);
@@ -396,6 +413,20 @@ contract LaunchCursorToken is CursorERC20 {
             _entries.push(token);
         }
         emit OpenPriceConfigured(token, config.startingSqrtPriceX96, config.maxQuoteIn);
+    }
+
+    /// @notice Commit short-lived LP and swap minima for a queued boundary
+    /// exit. The executor verifies the live one-sided boundary on execution.
+    function configureExit(address token, ILaunchCursorExitConfigurator.ExitConfig calldata config)
+        external onlyPriceConfigurator whenIdle
+    {
+        Launch storage launch = launches[token];
+        if (launch.stage != Stage.Active || !launch.exitReady) revert BadLaunch();
+        ILaunchCursorExitConfigurator(address(executor)).configureExit(token, config);
+        emit ExitBoundConfigured(
+            token, config.minTokenOut, config.minQuoteOut,
+            config.minEthOut, config.minQOut, config.deadline
+        );
     }
 
     /// @notice The authenticated position inspector reports that the open
@@ -672,6 +703,7 @@ contract LaunchCursorToken is CursorERC20 {
         else if (step == Step.Open && _opensSinceHarvest < 4) ++_opensSinceHarvest;
         bool executed;
         int32 netReturnBps;
+        bool comparable;
         if (address(executor).code.length != 0) {
             if (step == Step.Open) {
                 // Reserve once, before the executor call. If open reverts,
@@ -679,8 +711,9 @@ contract LaunchCursorToken is CursorERC20 {
                 uint24 feePips = feePolicy.selectFee(token);
                 try executor.open{gas: gasLimit}(token, feePips) { executed = true; } catch {}
             } else if (step == Step.Exit) {
-                try executor.exit{gas: gasLimit}(token) returns (int32 observedBps) {
+                try executor.exit{gas: gasLimit}(token) returns (int32 observedBps, bool comparable_) {
                     netReturnBps = observedBps;
+                    comparable = comparable_;
                     executed = true;
                 } catch {}
             } else {
@@ -689,11 +722,15 @@ contract LaunchCursorToken is CursorERC20 {
         }
         if (executed) {
             if (step == Step.Exit) {
-                if (netReturnBps > 10_000) netReturnBps = 10_000;
-                if (netReturnBps < -10_000) netReturnBps = -10_000;
                 // A failed policy write reverts this scheduler subcall and
                 // therefore the executor exit; no completed exit is lost.
-                feePolicy.recordClosed(token, netReturnBps);
+                if (comparable) {
+                    if (netReturnBps > 10_000) netReturnBps = 10_000;
+                    if (netReturnBps < -10_000) netReturnBps = -10_000;
+                    feePolicy.recordClosed(token, netReturnBps);
+                } else {
+                    feePolicy.recordCensored(token, StaticNextPoolFee.CensorReason.UnvaluedExit);
+                }
             }
             _onSuccess(token, step, source);
             succeeded = true;

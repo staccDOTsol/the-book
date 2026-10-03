@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {LaunchCursorToken, IPonsV2LaunchFactoryCursor, ILaunchCursorConfigurator} from "./LaunchCursorToken.sol";
+import {
+    LaunchCursorToken,
+    IPonsV2LaunchFactoryCursor,
+    ILaunchCursorConfigurator,
+    ILaunchCursorExitConfigurator
+} from "./LaunchCursorToken.sol";
 import {PositionInspector} from "./PositionInspector.sol";
 import {StaticNextPoolFee} from "./StaticNextPoolFee.sol";
 
@@ -23,6 +28,8 @@ contract MockLaunchFactory {
 contract MockCursorExecutor {
     address public controller;
     bool public configured;
+    bool public exitConfigured;
+    bool public comparableExit = true;
     bool public active;
     bool public inBand;
     bool public atQuoteBoundary = true;
@@ -38,16 +45,24 @@ contract MockCursorExecutor {
         configured = true;
     }
 
+    function configureExit(address, ILaunchCursorExitConfigurator.ExitConfig calldata config) external {
+        require(msg.sender == controller && active &&
+            (config.minTokenOut != 0 || config.minQuoteOut != 0) && config.deadline >= block.timestamp);
+        exitConfigured = true;
+    }
+
+    function setComparableExit(bool comparable_) external { comparableExit = comparable_; }
+
     function open(address, uint24 feePips) external {
         require(msg.sender == controller && configured && !active);
         active = true;
         openedFee = feePips;
     }
 
-    function exit(address) external returns (int32 netReturnBps) {
-        require(msg.sender == controller && active && enteredBand && (atQuoteBoundary || atTokenBoundary));
+    function exit(address) external returns (int32 netReturnBps, bool comparable) {
+        require(msg.sender == controller && active && enteredBand && exitConfigured && (atQuoteBoundary || atTokenBoundary));
         active = false;
-        return 1_234;
+        return (1_234, comparableExit);
     }
 
     function previewHarvest(address) external pure returns (uint256, uint256) {
@@ -119,6 +134,16 @@ contract LaunchCursorIntegrationTest {
         require(attempted && succeeded && executor.active(), "configured open failed");
     }
 
+    function _configureExit(bool tokenSide) private {
+        quote.configureExit(X, ILaunchCursorExitConfigurator.ExitConfig({
+            minTokenOut: tokenSide ? 1 : 0,
+            minQuoteOut: tokenSide ? 0 : 1,
+            minEthOut: 1,
+            minQOut: 1,
+            deadline: uint64(block.timestamp + 60)
+        }));
+    }
+
     function testEnqueueDoesNotPrematurelyOpen() external {
         quote.enqueue(X);
         (address token,,) = quote.nextAction();
@@ -157,6 +182,7 @@ contract LaunchCursorIntegrationTest {
 
         (address token, LaunchCursorToken.Step step,) = quote.nextAction();
         require(token == X && step == LaunchCursorToken.Step.Exit, "exit not prioritized");
+        _configureExit(true);
         (bool attempted, bool succeeded) = quote.processNext();
         require(attempted && succeeded, "exit did not complete");
         (,, StaticNextPoolFee.Status status) = policy.assignments(X);
@@ -171,6 +197,25 @@ contract LaunchCursorIntegrationTest {
         executor.setState(false, true, false);
         (entered, exitReady) = inspector.poke(X);
         require(entered && exitReady, "quote-side return not queued");
+    }
+
+    function testUnvaluedQuoteExitIsCensored() external {
+        _armAndOpen();
+        executor.setState(true, false, false);
+        inspector.poke(X);
+        executor.setState(false, true, false);
+        inspector.poke(X);
+        _configureExit(false);
+        executor.setComparableExit(false);
+
+        (bool attempted, bool succeeded) = quote.processNext();
+        require(attempted && succeeded && !executor.active(), "unvalued exit did not finish");
+        (LaunchCursorToken.Stage stage,,,,,,,,,,,) = quote.launches(X);
+        require(stage == LaunchCursorToken.Stage.Exited, "launch did not exit");
+        (,, StaticNextPoolFee.Status status) = quote.feePolicy().assignments(X);
+        require(status == StaticNextPoolFee.Status.Censored, "unvalued exit entered fee mean");
+        require(quote.feePolicy().totalClosed() == 0 && quote.feePolicy().totalCensored() == 1,
+            "wrong feedback counts");
     }
 
     function testEmergencyAbortRemovesStaleExitAndCensorsFee() external {
