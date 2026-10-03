@@ -114,7 +114,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_fresh_price_cannot_mask_stale_exit_cycle(self):
         self.save_components()
-        heartbeat = supervisor_heartbeat(exit_at=NOW - timedelta(minutes=5))
+        heartbeat = supervisor_heartbeat(exit_at=NOW - timedelta(minutes=25))
         heartbeat["lastCompletedKeepers"] = ["price"]
         (self.local / dashboard.SUPERVISOR_FILE).write_text(json.dumps(heartbeat))
         report = dashboard.snapshot(self.local, NOW)
@@ -122,7 +122,22 @@ class DashboardTests(unittest.TestCase):
         self.assertFalse(report["supervisor"]["keeperFresh"]["exit"])
         self.assertTrue(report["supervisor"]["keeperFresh"]["price"])
         self.assertEqual(report["supervisor"]["lastCompletedAtByKeeper"]["exit"],
-                         (NOW - timedelta(minutes=5)).isoformat())
+                         (NOW - timedelta(minutes=25)).isoformat())
+
+    def test_long_serial_keeper_cycles_are_still_recent(self):
+        self.save_components()
+        heartbeat = supervisor_heartbeat(exit_at=NOW - timedelta(minutes=19),
+                                         price_at=NOW - timedelta(minutes=19))
+        heartbeat["lastCompletedAtByKeeper"]["feedback"] = (
+            NOW - timedelta(minutes=25)).isoformat()
+        heartbeat["lastCompletedAtByKeeper"]["harvest"] = (
+            NOW - timedelta(minutes=25)).isoformat()
+        (self.local / dashboard.SUPERVISOR_FILE).write_text(json.dumps(heartbeat))
+        report = dashboard.snapshot(self.local, NOW)
+        self.assertEqual(report["runtime"]["state"], "live_reported")
+        self.assertTrue(report["supervisor"]["keeperFresh"]["exit"])
+        self.assertTrue(report["supervisor"]["keeperFresh"]["price"])
+        self.assertFalse(report["supervisor"]["keeperFresh"]["feedback"])
 
     def test_legacy_heartbeat_remains_readable_but_cannot_claim_both_keepers(self):
         self.save_components()
@@ -212,6 +227,24 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(report["state"], "running_reported")
         self.assertEqual(report["deploymentMode"], "trader-paid")
         self.assertNotIn("rpc.example", json.dumps(report))
+
+    def test_fly_probe_allows_long_cycles_and_skipped_auxiliary_keeper(self):
+        machines = [{"state": "started", "config": {"env": {"PONS_KEEPER_MODE": "trader-paid"}}}]
+        heartbeat = supervisor_heartbeat(exit_at=NOW - timedelta(minutes=19),
+                                         price_at=NOW - timedelta(minutes=19))
+        heartbeat["dequeueMode"] = "trader_transfer"
+        heartbeat["lastCompletedAtByKeeper"]["feedback"] = None
+        heartbeat["lastCompletedAtByKeeper"]["harvest"] = None
+        with patch.object(dashboard, "_fly_command", side_effect=[
+            json.dumps(machines), json.dumps(heartbeat)]):
+            report = dashboard.fly_status(NOW)
+        self.assertEqual(report["state"], "running_reported")
+        self.assertFalse(report["keeperFresh"]["feedback"])
+        heartbeat["lastCompletedAtByKeeper"]["price"] = (
+            NOW - timedelta(minutes=25)).isoformat()
+        with patch.object(dashboard, "_fly_command", side_effect=[
+            json.dumps(machines), json.dumps(heartbeat)]):
+            self.assertEqual(dashboard.fly_status(NOW)["state"], "attention")
 
     def test_untrusted_supervisor_error_is_replaced_without_echoing_secret(self):
         self.save_components()

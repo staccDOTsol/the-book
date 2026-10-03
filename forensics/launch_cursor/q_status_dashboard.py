@@ -29,7 +29,10 @@ LOCAL = HERE.parents[1] / ".local"
 PAGE = HERE / "q_status_dashboard.html"
 MAX_JOURNAL_BYTES = 512_000
 SUPERVISOR_FRESH_SECONDS = 90
-CYCLE_FRESH_SECONDS = 120
+# Exit/harvest and price/feedback share signer lanes. Each child may use the
+# supervisor's 600-second timeout, so a successful exit or price cycle can be
+# nearly two child runtimes old while its lane is still working normally.
+CYCLE_FRESH_SECONDS = 2 * 600 + 30
 ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}\Z")
 HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
 ZERO_ADDRESS = "0x" + "0" * 40
@@ -459,7 +462,8 @@ def fly_status(current: datetime | None = None) -> dict[str, Any]:
             result["mode"] == "live" and result["dequeueMode"] == "trader_transfer" and
             result["writesEnabled"] and result["status"] == "running" and
             result["watcherStatus"] == "process_running" and result["heartbeatFresh"] and
-            all(result["keeperFresh"].values())) else "attention"
+            result["keeperFresh"]["exit"] and result["keeperFresh"]["price"] and
+            result["consecutiveFailures"] == 0) else "attention"
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired,
             ValueError, TypeError, KeyError, json.JSONDecodeError):
         pass
