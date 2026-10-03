@@ -663,6 +663,50 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(len(rpc.sent), 2)
         self.assertIsNone(state.pending_tx)
 
+    def test_unreserved_pending_configure_is_cleared_for_fresh_plan(self):
+        key = "0x" + "01" * 32
+        plan = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                    10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        data = keeper.configure_data(plan)
+        signed = keeper.Account.from_key(key).sign_transaction({
+            "chainId": 1, "nonce": 1, "to": Q_LOW, "value": 0, "data": data,
+            "gas": 100000, "type": 2, "maxFeePerGas": 2,
+            "maxPriorityFeePerGas": 1})
+        pending = {"kind": "configure", "token": X, "data": data, "nonce": 1,
+                   "txHash": "0x" + signed.hash.hex().removeprefix("0x"),
+                   "rawTx": "0x" + signed.raw_transaction.hex().removeprefix("0x")}
+        class Rpc:
+            pending_nonce = 1
+            def call(self, method, params):
+                if method == "eth_getTransactionReceipt": return None
+                if method == "eth_getTransactionByHash": return None
+                if method == "eth_getTransactionCount":
+                    return hex(self.pending_nonce if params[1] == "pending" else 1)
+                raise AssertionError(method)
+        rpc = Rpc()
+        signer = keeper.KeeperSigner(rpc, bindings(), 1, key,
+                                     2, 500000, 10000000, 10**9, 10**9, 1, .001)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [X],
+                                   pending_tx=pending,
+                                   priority_tokens=[X], configured_plans={X: {"test": True}})
+        store = FakeStore()
+        with patch("pons_tx_budget.never_reserved_after_prior_nonce", return_value=True) as proof:
+            signer.recover(state, store, keeper.PlanSettings(), object())
+        proof.assert_called_once_with(signer.signer, pending["txHash"], 1)
+        self.assertIsNone(state.pending_tx)
+        self.assertEqual((state.last_block, state.tokens, state.priority_tokens), (10, [X], [X]))
+        self.assertEqual(state.configured_plans, {X: {"test": True}})
+        self.assertIsNone(store.saved[-1]["pendingTx"])
+
+        state.pending_tx = pending.copy()
+        rpc.pending_nonce = 2
+        with patch("pons_tx_budget.never_reserved_after_prior_nonce", return_value=True) as proof, \
+             patch.object(keeper, "q_launch_state", side_effect=keeper.KeeperError("unsafe")):
+            with self.assertRaisesRegex(keeper.KeeperError, "unsafe"):
+                signer.recover(state, store, keeper.PlanSettings(), object())
+        proof.assert_not_called()
+        self.assertIsNotNone(state.pending_tx)
+
     def test_state_file_is_local_and_mode_600(self):
         path = keeper.LOCAL / f"test-pons-price-{uuid4().hex}.json"
         rpc = LogRpc()

@@ -21,11 +21,23 @@ class Rpc:
     def __init__(self, balance: int):
         self.balance = balance
         self.calls: list[tuple[str, list]] = []
+        self.head = 100
+        self.receipts: dict[str, dict] = {}
+        self.transactions: dict[str, dict] = {}
+        self.block_hash = "0x" + "ab" * 32
 
     def call(self, method: str, params: list):
         self.calls.append((method, params))
         if method == "eth_getBalance":
             return hex(self.balance)
+        if method == "eth_blockNumber":
+            return hex(self.head)
+        if method == "eth_getTransactionReceipt":
+            return self.receipts.get(params[0])
+        if method == "eth_getTransactionByHash":
+            return self.transactions.get(params[0])
+        if method == "eth_getBlockByNumber":
+            return {"hash": self.block_hash}
         raise AssertionError(method)
 
 
@@ -81,6 +93,76 @@ class BudgetTests(unittest.TestCase):
                 budget.budgeted_send_raw(self.rpc, [signed_tx(self.key, 2)],
                                          lambda: sent.append(2))
         self.assertEqual(sent, [0, 1])
+
+    def mined(self, raw: str, *, block: int = 50, gas_price: int = 100_000_000):
+        sender, tx_hash, _, nonce, _, max_fee = budget._transaction(raw)
+        self.rpc.receipts[tx_hash] = {
+            "transactionHash": tx_hash, "from": sender, "blockNumber": hex(block),
+            "blockHash": self.rpc.block_hash, "status": "0x1", "gasUsed": hex(21_000),
+            "effectiveGasPrice": hex(gas_price),
+        }
+        self.rpc.transactions[tx_hash] = {
+            "hash": tx_hash, "from": sender, "nonce": hex(nonce), "type": "0x2",
+            "blockHash": self.rpc.block_hash, "gas": hex(21_000),
+            "maxFeePerGas": hex(max_fee), "value": "0x0",
+        }
+        return tx_hash
+
+    def test_confirmed_actual_cost_frees_daily_budget(self):
+        first, second, third = [signed_tx(self.key, nonce) for nonce in range(3)]
+        sent = []
+        with patch.dict(os.environ, self.env):
+            budget.budgeted_send_raw(self.rpc, [first], lambda: sent.append(0))
+            budget.budgeted_send_raw(self.rpc, [second], lambda: sent.append(1))
+            first_hash = self.mined(first)
+            budget.budgeted_send_raw(self.rpc, [third], lambda: sent.append(2))
+        item = json.loads(self.path.read_text())["signers"][self.sender]["txs"][first_hash]
+        self.assertEqual(item["maxCostWei"], 21_000_000_000_000)
+        self.assertEqual(item["actualCostWei"], 2_100_000_000_000)
+        self.assertEqual(item["settlementBlockNumber"], 50)
+        self.assertEqual(sent, [0, 1, 2])
+
+    def test_unconfirmed_receipt_keeps_full_reservation(self):
+        first, second, third = [signed_tx(self.key, nonce) for nonce in range(3)]
+        with patch.dict(os.environ, self.env):
+            budget.budgeted_send_raw(self.rpc, [first], lambda: None)
+            budget.budgeted_send_raw(self.rpc, [second], lambda: None)
+            self.mined(first, block=95)
+            with self.assertRaisesRegex(budget.BudgetError, "daily, total, or reserve"):
+                budget.budgeted_send_raw(self.rpc, [third], lambda: self.fail("sent"))
+        self.assertFalse(any("actualCostWei" in item for item in
+            json.loads(self.path.read_text())["signers"][self.sender]["txs"].values()))
+
+    def test_noncanonical_receipt_fails_closed(self):
+        first, second, third = [signed_tx(self.key, nonce) for nonce in range(3)]
+        with patch.dict(os.environ, self.env):
+            budget.budgeted_send_raw(self.rpc, [first], lambda: None)
+            budget.budgeted_send_raw(self.rpc, [second], lambda: None)
+            self.mined(first)
+            self.rpc.block_hash = "0x" + "cd" * 32
+            with self.assertRaisesRegex(budget.BudgetError, "canonical chain"):
+                budget.budgeted_send_raw(self.rpc, [third], lambda: self.fail("sent"))
+        self.assertFalse(any("actualCostWei" in item for item in
+            json.loads(self.path.read_text())["signers"][self.sender]["txs"].values()))
+
+    def test_unreserved_pending_requires_retained_prior_nonce_and_guard(self):
+        prior = signed_tx(self.key, 0)
+        pending = signed_tx(self.key, 1)
+        pending_hash = budget._transaction(pending)[1]
+        with patch.dict(os.environ, {**self.env, "PONS_BUDGET_REQUIRED": "1"}):
+            self.assertFalse(budget.never_reserved_after_prior_nonce(
+                self.sender, pending_hash, 1))
+            budget.budgeted_send_raw(self.rpc, [prior], lambda: None)
+            self.assertTrue(budget.never_reserved_after_prior_nonce(
+                self.sender, pending_hash, 1))
+            self.assertFalse(budget.never_reserved_after_prior_nonce(
+                self.sender, pending_hash, 2))
+            budget.budgeted_send_raw(self.rpc, [pending], lambda: None)
+            self.assertFalse(budget.never_reserved_after_prior_nonce(
+                self.sender, pending_hash, 1))
+        with patch.dict(os.environ, {**self.env, "PONS_BUDGET_REQUIRED": "0"}):
+            self.assertFalse(budget.never_reserved_after_prior_nonce(
+                self.sender, pending_hash, 1))
 
     def test_failed_network_send_still_reserves_and_wrong_signer_is_blocked(self):
         with patch.dict(os.environ, self.env):

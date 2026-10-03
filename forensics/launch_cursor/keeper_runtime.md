@@ -56,11 +56,14 @@ maxFeePerGas + value** in `.local/pons-keeper-budget.json` before forwarding a
 transaction. It checks chain 4663, exact signer, per-transaction maximum,
 daily and lifetime cumulative maximum, and starting- and live-balance
 floors. The journal and its lock are mode 0600. A rebroadcast of the same
-signed transaction reuses the reservation. Reservations are never refunded
-automatically after a cheap or failed transaction, which understates
-remaining budget. Review the journal before any manual reset. Lowering caps
-takes effect at the next send. This guard covers supervised keeper processes,
-not other wallet software using the same keys.
+signed transaction reuses the reservation. When a cap would block a new write,
+the runtime reconciles receipts with at least 12 confirmations against the
+canonical block and mined transaction, then charges actual gas cost instead
+of the maximum reservation. A reverted mined transaction still pays its actual
+gas cost; unknown or unconfirmed transactions retain their full reservations.
+Review the journal before any manual reset. Lowering caps takes effect at the
+next send. This guard covers supervised keeper processes, not other wallet
+software using the same keys.
 
 The checked-in [trader-paid configuration](fly/runtime-trader-paid.json) uses
 these limits in wei:

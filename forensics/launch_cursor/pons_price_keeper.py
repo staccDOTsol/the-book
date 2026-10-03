@@ -1139,6 +1139,23 @@ class KeeperSigner:
                 if confirmed_nonce > nonce:
                     raise KeeperError("keeper nonce was consumed without matching receipt")
                 if kind == "configure":
+                    # The state file is written before the shared budget guard
+                    # sees the raw transaction. If that guard rejected it
+                    # before reservation, an aged price plan must be dropped
+                    # and rebuilt instead of rebroadcasting stale calldata.
+                    from pons_tx_budget import BudgetError, never_reserved_after_prior_nonce
+                    pending_nonce = watch.quantity(
+                        self.rpc.call("eth_getTransactionCount", [self.signer, "pending"]),
+                        "pending nonce")
+                    try:
+                        never_sent = (confirmed_nonce == nonce and pending_nonce == nonce and
+                                      never_reserved_after_prior_nonce(self.signer, tx_hash, nonce))
+                    except BudgetError as exc:
+                        raise KeeperError("budget journal cannot prove pending configure was unsent") from exc
+                    if never_sent:
+                        state.pending_tx = None
+                        store.save(state)
+                        return
                     if q_launch_state(self.rpc, state.q, token)[0] != 1:
                         raise KeeperError("unknown pending configureOpen no longer targets a queued launch")
                     fresh = make_plan(self.rpc, self.bindings, token, settings, quotes)

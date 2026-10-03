@@ -2,10 +2,10 @@
 
 Every supervised keeper uses the shared HttpRpc transport. Before it forwards a
 signed transaction, this module reserves its *maximum* ETH cost (gas limit x
-max fee plus value) in a private, durable journal. Reservations are intentionally
-not refunded after mining: a failed or underpriced transaction still consumes
-its budget until an operator explicitly resets the journal. This is conservative
-and avoids relying on provider-specific pending balance semantics.
+max fee plus value) in a private, durable journal. When a cap would block a new
+write, canonical receipts with twelve confirmations can replace reservations
+with actual gas cost. Unknown and unconfirmed transactions keep their full
+reservation. The live balance floor is checked before every new write.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import stat
 from typing import Any, Callable, Iterator
 
@@ -26,6 +27,22 @@ import rlp
 
 class BudgetError(Exception):
     pass
+
+
+RECONCILE_CONFIRMATIONS = 12
+HASH = re.compile(r"^0x[0-9a-fA-F]{64}$")
+
+
+def _quantity(value: Any, field: str) -> int:
+    if not isinstance(value, str) or not value.startswith("0x"):
+        raise BudgetError(f"keeper {field} is malformed")
+    try:
+        result = int(value, 16)
+    except ValueError as exc:
+        raise BudgetError(f"keeper {field} is malformed") from exc
+    if result < 0:
+        raise BudgetError(f"keeper {field} is malformed")
+    return result
 
 
 def _positive_env(name: str, *, zero_ok: bool = False) -> int:
@@ -129,6 +146,107 @@ def _transaction(raw: str) -> tuple[str, str, int, int, int, int]:
     return sender, "0x" + keccak(encoded).hex(), chain_id, nonce, gas * max_fee + value, max_fee
 
 
+def _charge(item: dict[str, Any]) -> int:
+    maximum = item.get("maxCostWei")
+    if (type(maximum) is not int or maximum < 0 or
+            not isinstance(item.get("day"), str) or
+            type(item.get("nonce")) is not int or item["nonce"] < 0):
+        raise BudgetError("keeper budget journal is malformed")
+    if "actualCostWei" not in item:
+        return maximum
+    actual = item["actualCostWei"]
+    if (type(actual) is not int or not 0 <= actual <= maximum or
+            type(item.get("settlementBlockNumber")) is not int or
+            item["settlementBlockNumber"] < 0 or
+            not isinstance(item.get("settlementBlockHash"), str) or
+            not HASH.fullmatch(item["settlementBlockHash"])):
+        raise BudgetError("keeper budget journal is malformed")
+    return actual
+
+
+def _settled_cost(rpc: Any, tx_hash: str, sender: str, nonce: int,
+                  max_cost: int, head: int) -> tuple[int, int, str] | None:
+    receipt = rpc.call("eth_getTransactionReceipt", [tx_hash])
+    if receipt is None:
+        return None
+    if (not isinstance(receipt, dict) or
+            str(receipt.get("transactionHash", "")).lower() != tx_hash or
+            str(receipt.get("from", "")).lower() != sender or
+            not isinstance(receipt.get("blockHash"), str) or
+            not HASH.fullmatch(receipt["blockHash"])):
+        raise BudgetError("keeper receipt is malformed")
+    block_number = _quantity(receipt.get("blockNumber"), "receipt block number")
+    if head < block_number + RECONCILE_CONFIRMATIONS:
+        return None
+    status = _quantity(receipt.get("status"), "receipt status")
+    if status not in (0, 1):
+        raise BudgetError("keeper receipt status is malformed")
+    block = rpc.call("eth_getBlockByNumber", [hex(block_number), False])
+    block_hash = receipt["blockHash"].lower()
+    if (not isinstance(block, dict) or
+            str(block.get("hash", "")).lower() != block_hash):
+        raise BudgetError("keeper receipt is not in the canonical chain")
+    tx = rpc.call("eth_getTransactionByHash", [tx_hash])
+    if (not isinstance(tx, dict) or str(tx.get("hash", "")).lower() != tx_hash or
+            str(tx.get("from", "")).lower() != sender or
+            str(tx.get("blockHash", "")).lower() != block_hash or
+            _quantity(tx.get("nonce"), "transaction nonce") != nonce or
+            _quantity(tx.get("type"), "transaction type") != 2):
+        raise BudgetError("keeper mined transaction is malformed")
+    gas = _quantity(tx.get("gas"), "transaction gas")
+    max_fee = _quantity(tx.get("maxFeePerGas"), "transaction max fee")
+    value = _quantity(tx.get("value"), "transaction value")
+    gas_used = _quantity(receipt.get("gasUsed"), "receipt gas used")
+    effective_fee = _quantity(receipt.get("effectiveGasPrice"), "receipt effective fee")
+    if (gas * max_fee + value != max_cost or gas_used > gas or
+            effective_fee > max_fee):
+        raise BudgetError("keeper receipt cost exceeds signed reservation")
+    actual = gas_used * effective_fee + value
+    return actual, block_number, block_hash
+
+
+def _totals(txs: dict[str, Any], today: str) -> tuple[int, int]:
+    total = daily = 0
+    for tx_hash, item in txs.items():
+        if not isinstance(tx_hash, str) or not HASH.fullmatch(tx_hash) or not isinstance(item, dict):
+            raise BudgetError("keeper budget journal is malformed")
+        charged = _charge(item)
+        total += charged
+        if item["day"] == today:
+            daily += charged
+    return total, daily
+
+
+def never_reserved_after_prior_nonce(sender: str, tx_hash: str, nonce: int) -> bool:
+    """Prove a saved signer transaction never passed the supervised send guard.
+
+    The preceding nonce must be in the retained journal and no reservation may
+    exist at or after this nonce. Missing or reset journals cannot prove this.
+    """
+    if (os.environ.get("PONS_BUDGET_REQUIRED") != "1" or
+            not isinstance(sender, str) or not isinstance(tx_hash, str) or
+            not HASH.fullmatch(tx_hash) or type(nonce) is not int or nonce < 1):
+        return False
+    path_text = os.environ.get("PONS_BUDGET_JOURNAL")
+    if not path_text:
+        return False
+    path = Path(path_text)
+    if not path.is_absolute() or path.name != "pons-keeper-budget.json" or not _private_regular(path):
+        return False
+    with _locked_journal(path) as journal:
+        record = journal["signers"].get(sender.lower())
+        if (not isinstance(record, dict) or
+                type(record.get("initialBalanceWei")) is not int or
+                not isinstance(record.get("txs"), dict)):
+            return False
+        txs = record["txs"]
+        _totals(txs, datetime.now(timezone.utc).date().isoformat())
+        nonces = [item["nonce"] for item in txs.values()]
+        return (all(saved_hash.lower() != tx_hash.lower() for saved_hash in txs) and
+                nonce - 1 in nonces and
+                all(saved_nonce < nonce for saved_nonce in nonces))
+
+
 def budgeted_send_raw(rpc: Any, params: list[Any], send: Callable[[], Any]) -> Any:
     """Reserve worst-case spend, then submit under the same cross-process lock."""
     if not isinstance(params, list) or len(params) != 1:
@@ -171,18 +289,34 @@ def budgeted_send_raw(rpc: Any, params: list[Any], send: Callable[[], Any]) -> A
                     saved.get("maxCostWei") != max_cost):
                 raise BudgetError("keeper budget journal is malformed")
             return send()  # exact raw rebroadcast; never reserve it twice
-        total = 0
-        daily = 0
-        for item in txs.values():
-            if (not isinstance(item, dict) or not isinstance(item.get("maxCostWei"), int) or
-                    item["maxCostWei"] < 0 or not isinstance(item.get("day"), str) or
-                    not isinstance(item.get("nonce"), int)):
-                raise BudgetError("keeper budget journal is malformed")
-            total += item["maxCostWei"]
-            if item["day"] == today:
-                daily += item["maxCostWei"]
-        if (daily + max_cost > max_daily or total + max_cost > max_total or
-                record["initialBalanceWei"] - total - max_cost < floor):
+        total, daily = _totals(txs, today)
+        def fits() -> bool:
+            return (daily + max_cost <= max_daily and
+                    total + max_cost <= max_total and
+                    record["initialBalanceWei"] - total - max_cost >= floor)
+        if not fits():
+            head = _quantity(rpc.call("eth_blockNumber", []), "chain head")
+            changed = False
+            candidates = sorted(txs.items(), key=lambda entry:
+                                (entry[1]["day"] != today, -entry[1]["maxCostWei"]))
+            for old_hash, item in candidates:
+                if "actualCostWei" in item:
+                    continue
+                settled = _settled_cost(rpc, old_hash, sender, item["nonce"],
+                                        item["maxCostWei"], head)
+                if settled is None:
+                    continue
+                actual, block_number, block_hash = settled
+                item.update(actualCostWei=actual,
+                            settlementBlockNumber=block_number,
+                            settlementBlockHash=block_hash)
+                changed = True
+                total, daily = _totals(txs, today)
+                if fits():
+                    break
+            if changed:
+                _save_journal(path, journal)
+        if not fits():
             raise BudgetError("keeper transaction exceeds signer daily, total, or reserve budget")
         # Check live balance too; an external spend must never bypass the floor.
         balance_hex = rpc.call("eth_getBalance", [sender, "pending"])
