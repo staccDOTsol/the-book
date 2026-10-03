@@ -35,10 +35,19 @@ interface IHooklessERC20 {
     function balanceOf(address account) external view returns (uint256);
     function allowance(address owner, address spender) external view returns (uint256);
     function approve(address spender, uint256 amount) external returns (bool);
+    function transfer(address to, uint256 amount) external returns (bool);
 }
 
 interface IHooklessCursorQ {
     function executor() external view returns (address);
+    function ponsFactory() external view returns (address);
+}
+
+interface IHooklessPriceGuard {
+    function ponsFactory() external view returns (address);
+    function stateView() external view returns (address);
+    function quoteToken() external view returns (address);
+    function validate(address token, uint160 proposedSqrtPriceX96) external view returns (uint160 referenceSqrtPriceX96);
 }
 
 /// @dev Exact getSqrtPriceAtTick calculation from Uniswap v4 TickMath. Kept
@@ -133,6 +142,7 @@ contract HooklessLPExecutor {
     address public immutable owner;
     address public controller;
     address public quoteToken;
+    address public priceGuard;
     address public immutable poolManager;
     IHooklessPositionManager public immutable positionManager;
     IHooklessStateView public immutable stateView;
@@ -144,11 +154,14 @@ contract HooklessLPExecutor {
     uint256 private _locked = 1;
 
     event ControllerBound(address indexed controller);
+    event PriceGuardBound(address indexed guard);
     event OpenConfigured(address indexed token, uint160 startingSqrtPriceX96, int24 tickLower, int24 tickUpper);
     event PositionOpened(address indexed token, bytes32 indexed poolId, uint256 indexed tokenId, uint24 feePips, uint256 quoteSpent);
     event BandEntered(address indexed token, uint256 indexed tokenId);
     event FeesCollected(address indexed token, uint256 tokenAmount, uint256 quoteAmount);
     event PositionWithdrawn(address indexed token, uint256 tokenAmount, uint256 quoteAmount);
+    event PositionRescued(address indexed token, address indexed recipient, uint256 tokenAmount, uint256 quoteAmount);
+    event HeldAssetRescued(address indexed token, address indexed recipient, uint256 amount);
 
     error NotController();
     error NotOwner();
@@ -210,6 +223,20 @@ contract HooklessLPExecutor {
         emit ControllerBound(quoteToken_);
     }
 
+    /// @notice Bind the Q/ETH + Pons cross-price guard after Q and its launch
+    /// pool exist. Opening remains disabled until this reciprocal check passes.
+    function bindPriceGuard(address guard) external nonReentrant {
+        if (msg.sender != owner) revert NotOwner();
+        if (
+            priceGuard != address(0) || controller == address(0) || guard.code.length == 0 ||
+            IHooklessPriceGuard(guard).quoteToken() != quoteToken ||
+            IHooklessPriceGuard(guard).stateView() != address(stateView) ||
+            IHooklessPriceGuard(guard).ponsFactory() != IHooklessCursorQ(controller).ponsFactory()
+        ) revert InvalidConfiguration();
+        priceGuard = guard;
+        emit PriceGuardBound(guard);
+    }
+
     /// @notice The controller must commit bounded price, range and spend data
     /// before open. Its upstream quote must be executable and independently
     /// checked; this contract cannot infer a fair X/Q price from its own empty
@@ -249,8 +276,13 @@ contract HooklessLPExecutor {
         OpenConfig memory config = openConfigs[token];
         if (
             config.liquidity == 0 || config.deadline < block.timestamp ||
-            feePips < 50_000 || feePips > 500_000 || quoteToken.code.length == 0
+            feePips < 50_000 || feePips > 500_000 || quoteToken.code.length == 0 ||
+            priceGuard == address(0)
         ) revert InvalidConfiguration();
+
+        // The price keeper's saved config may be stale by the time a Q
+        // transfer processes it. Check live source prices in this same tx.
+        IHooklessPriceGuard(priceGuard).validate(token, config.startingSqrtPriceX96);
 
         IHooklessPositionManager.PoolKey memory key = _poolKey(token, feePips, config.tickSpacing);
         bytes32 poolId = keccak256(abi.encode(key));
@@ -348,12 +380,48 @@ contract HooklessLPExecutor {
         Position storage position = positions[token];
         if (!position.active) revert NotActive();
         if (!position.enteredBand) revert NotEnteredBand();
-        if (deadline < block.timestamp) revert InvalidConfiguration();
         (, , bool atQuoteBoundary, bool atTokenBoundary,) = inspect(token);
         if (!atQuoteBoundary && !atTokenBoundary) revert NotAtBoundary();
         if ((atQuoteBoundary && minQuoteOut == 0) || (atTokenBoundary && minTokenOut == 0)) {
             revert InvalidConfiguration();
         }
+        return _burnPosition(token, minTokenOut, minQuoteOut, deadline);
+    }
+
+    /// @notice Owner-triggered recovery through Q. It may withdraw at any
+    /// price and sends new X/Q receipts to `recipient`. This bypasses normal
+    /// boundary-exit distribution only for an explicit emergency abort.
+    function emergencyUnwind(
+        address token, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline, address recipient
+    ) external onlyController nonReentrant returns (uint256 tokenAmount, uint256 quoteAmount) {
+        if (recipient == address(0)) revert InvalidConfiguration();
+        (tokenAmount, quoteAmount) = _burnPosition(token, minTokenOut, minQuoteOut, deadline);
+        if (tokenAmount != 0 && !IHooklessERC20(token).transfer(recipient, tokenAmount)) {
+            revert ApprovalFailed();
+        }
+        if (quoteAmount != 0 && !IHooklessERC20(quoteToken).transfer(recipient, quoteAmount)) {
+            revert ApprovalFailed();
+        }
+        emit PositionRescued(token, recipient, tokenAmount, quoteAmount);
+    }
+
+    /// @notice Recover ERC20 balances already held outside the LP NFT, such
+    /// as unused Q prefunding, harvested fees, or accidentally sent assets.
+    /// It cannot withdraw liquidity still represented by an active position.
+    function rescueHeldERC20(address token, uint256 amount, address recipient)
+        external onlyController nonReentrant
+    {
+        if (token.code.length == 0 || recipient == address(0) || amount == 0) revert InvalidConfiguration();
+        if (!IHooklessERC20(token).transfer(recipient, amount)) revert ApprovalFailed();
+        emit HeldAssetRescued(token, recipient, amount);
+    }
+
+    function _burnPosition(address token, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline)
+        private returns (uint256 tokenAmount, uint256 quoteAmount)
+    {
+        Position storage position = positions[token];
+        if (!position.active) revert NotActive();
+        if (deadline < block.timestamp) revert InvalidConfiguration();
         IHooklessPositionManager.PoolKey memory key = _poolKey(token, position.feePips, position.tickSpacing);
         uint256 tokenBefore = IHooklessERC20(token).balanceOf(address(this));
         uint256 quoteBefore = IHooklessERC20(quoteToken).balanceOf(address(this));

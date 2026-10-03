@@ -6,12 +6,16 @@ import {PositionInspector} from "./PositionInspector.sol";
 import {StaticNextPoolFee} from "./StaticNextPoolFee.sol";
 
 contract MockLaunchFactory {
+    mapping(address => uint8) public phase;
+
+    function setPhase(address token, uint8 phase_) external { phase[token] = phase_; }
+
     function getLaunchedToken(address token)
-        external pure returns (IPonsV2LaunchFactoryCursor.LaunchedToken memory launch)
+        external view returns (IPonsV2LaunchFactoryCursor.LaunchedToken memory launch)
     {
         launch.token = token;
         launch.curve = address(0xC0FFEE);
-        launch.phase = 0;
+        launch.phase = phase[token];
         launch.exists = true;
     }
 }
@@ -51,6 +55,14 @@ contract MockCursorExecutor {
     }
 
     function harvest(address) external pure { revert("no executable valuation"); }
+
+    function emergencyUnwind(address, uint128, uint128, uint64, address)
+        external returns (uint256 tokenAmount, uint256 quoteAmount)
+    {
+        require(msg.sender == controller && active);
+        active = false;
+        return (0, 1 ether);
+    }
 
     function setState(bool inBand_, bool atQuoteBoundary_, bool atTokenBoundary_) external {
         inBand = inBand_;
@@ -115,6 +127,19 @@ contract LaunchCursorIntegrationTest {
         require(!attempted && !succeeded, "unconfigured launch attempted open");
     }
 
+    function testFastGraduationMayStillEnqueue() external {
+        factory.setPhase(X, 2);
+        quote.enqueue(X);
+        (LaunchCursorToken.Stage stage,,,,,,,,,,,) = quote.launches(X);
+        require(stage == LaunchCursorToken.Stage.Queued, "graduated launch was missed");
+
+        address swept = address(0xCAFE);
+        factory.setPhase(swept, 1);
+        quote.enqueue(swept);
+        (stage,,,,,,,,,,,) = quote.launches(swept);
+        require(stage == LaunchCursorToken.Stage.Queued, "swept launch was missed");
+    }
+
     function testFullRangeJumpQueuesExitAndRecordsFeeOutcome() external {
         _armAndOpen();
         uint24 fee = executor.openedFee();
@@ -146,5 +171,19 @@ contract LaunchCursorIntegrationTest {
         executor.setState(false, true, false);
         (entered, exitReady) = inspector.poke(X);
         require(entered && exitReady, "quote-side return not queued");
+    }
+
+    function testEmergencyAbortRemovesStaleExitAndCensorsFee() external {
+        _armAndOpen();
+        executor.setState(false, false, true);
+        inspector.poke(X);
+        quote.emergencyAbort(X, 0, 0, uint64(block.timestamp + 60));
+        require(!executor.active(), "position still active");
+        (,, StaticNextPoolFee.Status status) = quote.feePolicy().assignments(X);
+        require(status == StaticNextPoolFee.Status.Censored, "abort not recorded");
+        (bool attempted, bool succeeded) = quote.processNext();
+        require(attempted && succeeded, "stale exit not cleared");
+        (address token,,) = quote.nextAction();
+        require(token == address(0), "aborted exit still queued");
     }
 }

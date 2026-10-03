@@ -45,6 +45,10 @@ interface ILaunchCursorExecutor {
     function previewHarvest(address launchToken) external view returns (uint256 grossEthValue, uint256 estimatedGasUnits);
     /// @notice Claim fees atomically; revert if nothing was claimed.
     function harvest(address launchToken) external;
+    function emergencyUnwind(
+        address launchToken, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline, address recipient
+    ) external returns (uint256 tokenAmount, uint256 quoteAmount);
+    function rescueHeldERC20(address token, uint256 amount, address recipient) external;
 }
 
 /// @notice The price keeper supplies a short-lived, independently verified
@@ -145,7 +149,8 @@ contract LaunchCursorToken is CursorERC20 {
         Queued,
         Active,
         Exited,
-        Skipped
+        Skipped,
+        Aborted
     }
 
     enum Step {
@@ -234,7 +239,10 @@ contract LaunchCursorToken is CursorERC20 {
     event HarvestDeferred(address indexed token, uint256 grossEthValue, uint256 estimatedGasUnits, uint64 nextAttemptAt);
     event ReportDeferred(address indexed token);
     event StaleHarvestRemoved(address indexed token);
+    event StaleExitRemoved(address indexed token);
     event LaunchSkipped(address indexed token);
+    event LaunchAborted(address indexed token, uint256 tokenRecovered, uint256 quoteRecovered);
+    event HeldAssetRescued(address indexed token, uint256 amount);
     event PriceConfiguratorSet(address indexed configurator);
     event OpenPriceConfigured(address indexed token, uint160 sqrtPriceX96, uint128 maxQuoteIn);
     event SkippedEntryRemoved(address indexed token);
@@ -316,7 +324,10 @@ contract LaunchCursorToken is CursorERC20 {
         if (token == address(0)) revert BadLaunch();
         if (launches[token].stage != Stage.None) revert AlreadyEnqueued();
         IPonsV2LaunchFactoryCursor.LaunchedToken memory record = ponsFactory.getLaunchedToken(token);
-        if (!record.exists || record.token != token || record.curve == address(0) || record.phase != 0) {
+        // The watcher may submit after a fast launch has graduated. Preserve
+        // its verified factory identity; the price keeper decides when its
+        // current phase has an executable ETH route.
+        if (!record.exists || record.token != token || record.curve == address(0) || record.phase > 2) {
             revert BadLaunch();
         }
         Launch storage launch = launches[token];
@@ -335,6 +346,32 @@ contract LaunchCursorToken is CursorERC20 {
         }
         launch.stage = Stage.Skipped;
         emit LaunchSkipped(token);
+    }
+
+    /// @notice Explicit emergency recovery if the normal exit is unavailable.
+    /// The LP may be burned at any price; receipts go to the owner for manual
+    /// handling rather than through the automatic burn/fanout distribution.
+    function emergencyAbort(address token, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline)
+        external onlyOwner whenIdle
+    {
+        Launch storage launch = launches[token];
+        if (launch.stage != Stage.Active) revert BadLaunch();
+        (uint256 tokenRecovered, uint256 quoteRecovered) = ILaunchCursorExecutor(address(executor))
+            .emergencyUnwind(token, minTokenOut, minQuoteOut, deadline, owner);
+        feePolicy.recordCensored(token, StaticNextPoolFee.CensorReason.StuckUnwound);
+        launch.stage = Stage.Aborted;
+        launch.exitReady = false;
+        launch.harvestReady = false;
+        emit LaunchAborted(token, tokenRecovered, quoteRecovered);
+    }
+
+    /// @notice Return unused Q prefunding and previously collected ERC20 fees
+    /// to the owner. LP principal remains in the PositionManager until a
+    /// normal exit or emergency abort burns the NFT.
+    function rescueHeldERC20(address token, uint256 amount) external onlyOwner whenIdle {
+        if (token == address(0) || amount == 0) revert BadConfiguration();
+        executor.rescueHeldERC20(token, amount, owner);
+        emit HeldAssetRescued(token, amount);
     }
 
     /// @notice A separate automated price keeper may be assigned this role.
@@ -574,6 +611,11 @@ contract LaunchCursorToken is CursorERC20 {
             if (source == 1) _heapPop(_entryRetries, false);
             else _entries.pop();
             emit SkippedEntryRemoved(token);
+            return (true, true);
+        }
+        if (step == Step.Exit && launches[token].stage != Stage.Active) {
+            _heapPop(_exits, false);
+            emit StaleExitRemoved(token);
             return (true, true);
         }
         if (

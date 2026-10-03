@@ -6,15 +6,16 @@ LiquidityLauncher path. A separate Uniswap v4 pool pairs each eligible Pons
 launch token `X` with `Q`. These X/Q pools have **no hook**. Their static fee
 is chosen for each *new pool*, from 5% to 50%, using prior completed outcomes.
 The existing Pools.xyz Q/ETH launch pool keeps its own fixed fee.
-Build with the Solidity optimizer: with Solc 0.8.26 and 200 optimizer runs,
-Q's runtime is 17,293 bytes; the unoptimized runtime exceeds the EVM
-24,576-byte contract-size limit.
+Build with the Solidity optimizer: Solc 0.8.26 at 200 runs produces an
+18,640-byte Q runtime; the unoptimized runtime exceeds the EVM
+24,576-byte contract-size limit. Remeasure optimized size after edits.
 
 ## Contracts and actual flow
 
 1. [LaunchCursorToken.sol](LaunchCursorToken.sol) supplies Q and the LIFO
    scheduler. An owner-controlled log watcher calls `enqueue(X)` after a
-   Pons `TokenLaunched` event; Q verifies the factory record. Enqueueing does
+   Pons `TokenLaunched` event; Q verifies the factory record in phase 0–2,
+   including a fast graduation before the watcher submits it. Enqueueing does
    **not** authorize an LP mint. The launch waits until a separate automated
    price keeper calls `configureOpen(X, config)` through Q. This configures
    bounded Q spend, short deadline, starting v4 price, liquidity, and ticks,
@@ -32,7 +33,8 @@ Q's runtime is 17,293 bytes; the unoptimized runtime exceeds the EVM
    fee, and spend cap. It owns that NFT. It can inspect current price,
    mark range entry, collect LP fees, and mechanically withdraw at a verified
    one-sided boundary. It requires valuable Q already deposited in the vault
-   and a trusted, executable X/Q configuration. It has **no price oracle**.
+   and a trusted, executable X/Q configuration. Opening is disabled until a
+   matching price guard is bound.
 4. [PositionInspector.sol](PositionInspector.sol) is permissionless. `poke(X)`
    reads the executor's current tick, records range entry, and reports the
    first **observed** all-Q or all-X boundary to Q. A complete jump from the
@@ -43,6 +45,12 @@ Q's runtime is 17,293 bytes; the unoptimized runtime exceeds the EVM
    `pokeHarvest(X)` can report a fee claim only after the executor supplies a
    nonzero executable fee-value preview; the current executor deliberately
    reverts from that preview, so harvests stay disabled.
+5. [OpenPriceGuard.sol](OpenPriceGuard.sol) checks the proposed starting
+   X/Q price against the **current marginal spot** from Pons X/ETH and the
+   actual Q/ETH launch pool, in the same transaction as mint. It accepts
+   active curve phase 0 and graduated v4 phase 2; swept phase 1 waits. Its
+   bound is capped at 10%, requires in-range Q/ETH liquidity, and cannot measure route depth, taxes, or price
+   impact. It is a sanity check, not an executable-price oracle.
 
 The scheduler prioritizes ready exits, then configured LIFO entries, then
 LP-fee harvests. An eligible direct EOA Q transfer with enough gas attempts
@@ -50,7 +58,11 @@ one action; `processNext()` is permissionless when transfers are quiet.
 Contract/v4 settlement transfers are excluded to avoid nested PoolManager
 operations. Each caller pays the gas for its attempt. A retry backoff avoids
 one failed open/exit blocking later launches. The owner can skip a stale
-queued launch, and the automatic transfer step can be disabled.
+queued launch, and the automatic transfer step can be disabled. An explicit
+owner `emergencyAbort(X)` burns an active LP at any price and sends the
+recovered X and Q to the owner. `rescueHeldERC20` returns unused vault Q and
+previously collected assets. These are recovery paths outside the normal
+burn/fanout payout policy.
 
 ## Bootstrap and trust boundary
 
@@ -60,7 +72,11 @@ Q pointing at that executor and inspector, with exactly 1 billion units at 18
 decimals if the intended Pools.xyz Instant Launch route is used. Then call
 `executor.bindController(Q)` from its deployer and `inspector.bindCursor(Q)`
 from any account. This reciprocal binding resolves the constructor cycle.
-It does **not** launch Q. The underlying LiquidityLauncher supports an
+After Q/ETH is launched, deploy `OpenPriceGuard` with Q's **actual** Q/ETH
+fee and tick spacing, then have the executor deployer call
+`executor.bindPriceGuard(guard)`. This opens the mint path only after the
+guard's Q, StateView, and Pons factory links match the executor. These steps
+do **not** launch Q. The underlying LiquidityLauncher supports an
 existing custom token via atomic `depositToken` + `distributeToken`, whereas
 the ordinary Pools.xyz UI does not expose this route. The launcher locks the
 whole initial Q supply in the Q/ETH position; the executor needs to acquire
@@ -72,7 +88,8 @@ price X and Q through **executable** ETH routes, validate current reserves and
 fees, select the intended quote-only tick band, set a short deadline and
 bounded Q amount, and revalidate before submitting. An untrusted spot or
 arbitrary initial X/Q price can donate the vault's Q to arbitrageurs. The
-prototype does not enforce a price-oracle deviation bound. Another account
+same-transaction guard limits deviation from **spot**, but still does not
+enforce executable prices, size-aware curve quotes, or a TWAP. Another account
 can initialize a selected PoolKey first, causing this executor's open to
 fail; the owner can then skip that launch.
 
@@ -83,10 +100,14 @@ fail; the owner can then skip that launch.
 estimation, X liquidation through the active Pons curve or a graduated pool,
 Q burning, WETH wizard-fanout transfer, developer ETH payout, and net-return
 accounting. `withdrawPosition` only demonstrates mechanical LP removal; Q
-does not expose a call path for it, so **do not fund this prototype with live
-assets**. There is no live position, trade, launch, or realized profit from
-this code. It has not been run on a Robinhood fork or audited. A complete
-exit adapter and escape path must be built and tested before deployment.
+does not expose that *normal-exit* path. `emergencyAbort` is reachable and
+was tested on a Robinhood fork, but it requires the owner to intervene and
+does not execute the requested liquidation, burn, or payouts. **Do not fund
+this prototype with live assets.** There is no live position, trade, launch,
+or realized profit from this code. The active-curve and graduated-v4 sale
+adapters are standalone components; normal exit, Q conversion and burn,
+recipient payouts, and outcome accounting must be integrated and tested
+before deployment.
 
 An exit is triggered by a one-sided boundary **after** range entry. There is
 no timer exit. Fee collection before exit is optional and only makes sense
@@ -95,3 +116,21 @@ full LP burn at exit would collect accrued fees anyway. An eventual preview
 must value claimable X and Q at executable ETH prices and estimate all claim
 and conversion gas; the cursor currently requires gross fee value above
 twice its configured gas-price ceiling times estimated units.
+
+## Verification
+
+Solc 0.8.26 with optimization and 200 runs compiled the contracts. Five
+local integration tests passed. A read-only Robinhood RPC fork test also
+initialized real Uniswap v4 zero-hook pools, minted Q-only positions, then
+burned the LPs and recovered Q through the owner emergency path using the
+deployed PositionManager in **both** token-address orderings.
+The fork used a mock Pons factory and mock price guard because Q has not been
+launched; it proves the v4 mint path, not the strategy's market prices, fees,
+exit, or profitability. No fork test broadcasts a transaction.
+
+Separate read-only Robinhood fork tests passed for a real graduated Pons
+X/ETH v4 sale, a real active Pons X/ETH curve sale, and the graduated
+cross-price guard with a synthetic Q/ETH price. Both sale adapters are
+standalone: the executor does not yet call them. While no closed outcomes
+exist, `StaticNextPoolFee` explores every fee assignment; it cannot learn a
+best fee until complete exits report comparable net returns.
