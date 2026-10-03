@@ -16,6 +16,8 @@ On-chain forensics of launchpad bot structure, built from public data, and a sum
 | [120-pons-hook-and-burst-universe.md](120-pons-hook-and-burst-universe.md) | Pons graduation hook, its fee routing, and its effect on the RH burst universe |
 | [130-lower-fee-burst-lp-replay.md](130-lower-fee-burst-lp-replay.md) | Lower-fee LP fee marks, gas, and causal route-fork checks after funded 4–5-pool bursts |
 | [140-nothingburger-two-fee-arb-model.md](140-nothingburger-two-fee-arb-model.md) | Creator-tax and LP-fee route math for a proposed NOTHINGBURGER quote token |
+| [150-nothingburger-counterfactual-replay.md](150-nothingburger-counterfactual-replay.md) | One-wallet historical-shock replay for synthetic X/NOTHINGBURGER pools |
+| [160-pons-every-launch-pool-plan.md](160-pons-every-launch-pool-plan.md) | Factory launch discovery, three-range feasibility, one-position and three-position gas at every-launch cadence |
 
 ## In one paragraph
 

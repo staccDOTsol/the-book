@@ -1,0 +1,35 @@
+# NOTHINGBURGER quote-pool counterfactual: one $104 wallet
+
+This is a **counterfactual replay**, not a realized trade. The 19 target-token X/ETH price paths, their Pons hook fees, and the pool-burst signal blocks are historical Robinhood Chain observations from 2–3 October 2026. NOTHINGBURGER and every X/NOTHINGBURGER pool are synthetic. Historical X/ETH swap notional limits hypothetical arbitrage size, but it does not prove the invented route would have been used or executable at that size. [Observed path exporter](../pons_x_eth_shock_paths.py), [path data](../results/nothingburger-historical-x-eth-shocks-24h.json), [replay model](../nothingburger_counterfactual_replay.py), [full 55-case matrix](../results/nothingburger-counterfactual-matrix-24h.csv).
+
+## Capital and entry
+
+One wallet starts with **$104 = 0.04 ETH** at an assumed $2,600/ETH. It pays the current **0.0005 ETH** Pons launch fee, reserves **0.001 ETH** for gas, and spends **0.0385 ETH** on the exempt developer buy. It cannot also make the screenshot's 0.044 ETH buy from this balance. At 0% creator tax, that buy returns about **22.184 million NOTHINGBURGER**. The token remains on its bonding curve at 0.91% of the 4.2 ETH graduation threshold. At 10% tax it returns about 19.988 million tokens; the tax on the creator's own buy is later claimable, so it is not outside income. The Pons factory currently specifies 1 billion token supply, 1.68 ETH phantom reserve, 1% base trading fee, and a creator-tax cap of 10%. [Live-config and integer-quote reader](../pons_curve_scenario.py), [Pons curve quote method](https://docs.ponsfamily.com/v2#getting-a-quote).
+
+The signal is the first **strictly funded** `4 pools / 300 seconds`, falling back to `5 pools / 600 seconds`, for each ETH-paired Pons X after its Pons pool launch. This found **19 tokens** in the sampled 24 hours: 18 on the primary rule, one on the fallback. At each signal, the model initializes a zero-hook X/NOTHINGBURGER v4 pool, then deposits **25% of uncommitted NOTHINGBURGER inventory** in one quote-only tick-spacing-200 band. This is the same wallet; there is no separate LP budget. The range boundary is set from the completed-signal-block X/ETH marginal price and the current simulated NOTHINGBURGER curve reserves. Size-aware curve buys and sells, rather than that marginal reference, price each hypothetical arbitrage route. An actual bot must get an executable X/ETH quote and read live NOTHINGBURGER `getReserves()` and immutable fees before submitting the initialization; those venues did not coexist historically.
+
+Across the sample, 19 pool initializations would average **0.79/hour**. The median time between observed signals was **44 minutes**, the longest gap just over **3 hours**, and up to **3 signals arrived within 30 minutes** (4 within an hour). That is one observed day, not a forecast.
+
+## Replay and cash-out rule
+
+The model uses a shared NOTHINGBURGER curve across all 19 positions. After each *completed historical X/ETH swap block*, a hypothetical outsider may take the most profitable X/NOTHINGBURGER→NOTHINGBURGER/ETH or reverse route, subject to that block's observed ETH notional and an assumed 0.00001 ETH arb gas cost. X's actual Pons base plus creator tax, the tested X/NOTHINGBURGER core fee, and NOTHINGBURGER's tested creator tax all enter the route. The owner receives core LP fees on the X/NOTHINGBURGER pool and 70% of NOTHINGBURGER's 1% Pons base fee plus its creator tax on outsider Pons volume, with buyback disabled. Fees paid by the owner on their own buy or redemption are netted against their own spending.
+
+Each position exits at the first full-X or returned-N boundary after activation, or at 30 minutes. Withdrawn X is sold against the observed X/ETH price with the actual X Pons hook fee. The stricter sensitivity quotes that X sale through the current observed v4 tick using its recorded active liquidity; sales larger than that tick fall back to a marginal quote and are flagged in the matrix. Returned N recycles into the same wallet; remaining N is sold to its Pons curve at sample end, limited by its real ETH reserve. The model charges the previously sampled **0.000013802 ETH** mint-plus-burn gas for each of 19 entries, or **0.000262238 ETH** in total. New-pool initialization, token launch transaction gas, fee sweep/claim, and final redemption gas are not measured and make the reported outcomes optimistic. No historical transaction executes the counterfactual route.
+
+## Results
+
+The table shows **one-tick external quote sensitivity** profit/loss versus the original $104. Cells with X liquidation beyond the known current tick use the flagged marginal fallback, so they are less reliable. The [CSV](../results/nothingburger-counterfactual-matrix-24h.csv) retains all creator taxes from 0% to 10% in 1% steps and both marginal and one-tick results.
+
+| X/NOTHINGBURGER pool fee | N tax 0% | N tax 5% | N tax 10% |
+| ---: | ---: | ---: | ---: |
+| 1% | −$12.29 | −$11.31 | −$10.92 |
+| 7% | −$11.70 | −$11.51 | −$10.54 |
+| 20% | −$13.84 | −$8.28 | −$13.89 |
+| 50% | **+$16.42** | −$11.80 | −$13.20 |
+| 70% | −$14.45 | −$11.66 | −$11.61 |
+
+The best modeled cell is **50% independent pool fee, 0% NOTHINGBURGER creator tax**. It ends with **$120.42**, including the launch fee and sampled LP gas, and has 9 hypothetical outsider trades across 7 activated positions. Its outsider NOTHINGBURGER creator fee is only **$0.59**; most modeled gain is from LP inventory in X appreciating before its 30-minute exit. One token, `0xb3d190…`, accounts for the gain: excluding that token changes the same one-tick case to **−$12.69**. The model's launch-and-hold cash-out with no X/NOTHINGBURGER flow is **−$1.90 before LP gas**; adding 19 unused LP round trips yields **−$2.58**. Higher creator tax earns more per outsider Pons trade but suppresses some routes by raising the arbitrage hurdle. [Full results and best-row attribution](../results/nothingburger-counterfactual-replay-24h.json).
+
+The 1% and 7% pool-fee rows lose money at **every** tested N tax. Some 20% cases show a small modeled gain, but their X liquidation exceeds the known current tick and relies on a marginal fallback. The only positive case in the table with all X exits within observed first-tick depth is the fragile 50%/0% case. Its gain could disappear if the invented pool attracts fewer arbitrageurs, external X quotes move after the observed block, liquidity beyond the recorded tick is needed, or actual initialization/claiming costs are higher. This replay **does not establish a profitable fee-tax setting or justify an autonomous launch**.
+
+The live dashboard was also aligned with the `4/300` then `5/600` birth-lead screen. It labels funding as unverified until checked. Its zero live leads are not inconsistent with this historical result: the last of these 19 signals occurred at **01:33 UTC**, before the dashboard session shown at **04:20 UTC**. The live server is now kept running at `http://127.0.0.1:8765/` by a local LaunchAgent.
