@@ -7,11 +7,13 @@ pragma solidity ^0.8.26;
 /// the returned fee to every open retry for that launch token.
 /// @dev Fees are v4 pips (1,000,000 = 100%). The 46 arms are 5%, 6%, ...,
 /// 50%. A fixed 15% exploration probability samples a random arm; otherwise
-/// the arm with the highest mean recorded cash return is used. Selection has
+/// the arm with the highest conservative mean selection score is used. Selection has
 /// a fixed upper bound of 46 arm reads and never scans launches or positions.
-/// No-trade and stuck observations are censored and excluded from that mean.
-/// Launch tokens differ in flow, liquidity, and volatility, so historical arm
-/// means are observational feedback, not causal estimates of a fee's effect.
+/// Every assigned token participates in the conservative selection score:
+/// a still-open or censored token carries a fixed negative provisional score
+/// until a comparable exit replaces it. Launch tokens differ in flow,
+/// liquidity, and volatility, so this is exploratory observational feedback,
+/// not a causal or realized-profit estimate.
 contract StaticNextPoolFee {
     uint24 public constant MIN_FEE_PIPS = 50_000;
     uint24 public constant MAX_FEE_PIPS = 500_000;
@@ -19,6 +21,7 @@ contract StaticNextPoolFee {
     uint8 public constant ARM_COUNT = 46;
     uint16 public constant EXPLORATION_BPS = 1_500;
     int32 public constant MAX_ABS_RETURN_BPS = 10_000;
+    int32 public constant UNRESOLVED_PENALTY_BPS = -5_000;
 
     enum Status { None, Selected, Closed, Censored }
     enum CensorReason { None, NeverOpened, NoTrade, StuckUnwound, UnvaluedExit }
@@ -42,6 +45,7 @@ contract StaticNextPoolFee {
 
     mapping(address => Assignment) public assignments;
     ArmStats[46] public armStats;
+    uint64[46] public armAssignments;
 
     event FeeSelected(address indexed token, uint24 feePips, uint8 arm, bool exploration);
     event ClosedRecorded(address indexed token, uint24 feePips, int32 netReturnBps);
@@ -87,6 +91,7 @@ contract StaticNextPoolFee {
         assignment.feePips = feePips;
         assignment.arm = arm;
         assignment.status = Status.Selected;
+        ++armAssignments[arm];
         emit FeeSelected(token, feePips, arm, explore);
     }
 
@@ -95,14 +100,27 @@ contract StaticNextPoolFee {
         return assignments[token].feePips;
     }
 
-    /// @notice Feed back one completed position after the executor has
-    /// removed liquidity, settled balances, and collected fees. The trusted
-    /// controller/reporter computes the return in basis points of traceable
-    /// actual ETH acquisition cost for the Q deployed at open: realized
-    /// recipient ETH/WETH minus that Q cost and strategy-paid gas. Burned Q
-    /// is a separate noncash supply metric. A zero/untraceable Q cost leaves
-    /// the exit censored. An outcome above +/-100% must be clipped before
-    /// reporting. A call before a successful exit corrupts learning.
+    /// @notice Exploratory score used for arm selection. The penalty is a
+    /// provisional heuristic for both still-open and censored assignments.
+    function selectionScore(uint8 arm)
+        external
+        view
+        returns (uint64 assigned, int256 scoreSumBps, int256 meanBps)
+    {
+        assigned = armAssignments[arm];
+        scoreSumBps = _selectionSum(arm);
+        meanBps = assigned == 0 ? int256(0) : scoreSumBps / int256(uint256(assigned));
+    }
+
+    /// @notice Feed back one completed three-tranche pool after the executor has
+    /// removed all liquidity, settled balances, and collected fees. The trusted
+    /// controller/reporter supplies a bounded gross ETH-equivalent mark score
+    /// from actual recipient ETH/WETH and full-size executable Q/ETH quotes
+    /// for Q deposited at open and Q burned during the position's lifetime.
+    /// This estimate excludes gas until complete per-position attribution is
+    /// available and is not realized profit. An outcome above +/-100% must be
+    /// clipped before reporting. A call before a successful exit corrupts
+    /// learning.
     function recordClosed(address token, int32 netReturnBps) external onlyController {
         Assignment storage assignment = assignments[token];
         if (assignment.status != Status.Selected) revert NotSelected();
@@ -118,8 +136,8 @@ contract StaticNextPoolFee {
         emit ClosedRecorded(token, assignment.feePips, netReturnBps);
     }
 
-    /// @notice Terminal observations without a comparable realized outcome
-    /// are counted but excluded from the mean return. This includes a fully
+    /// @notice Terminal observations without a comparable gross mark estimate
+    /// retain the provisional selection penalty. This includes a fully
     /// completed exit whose Q burn cannot yet be valued in ETH. The controller
     /// must only call this after it confirms that no position remains open (or
     /// an entry was permanently skipped). An active, stuck position stays
@@ -135,25 +153,35 @@ contract StaticNextPoolFee {
         emit CensoredRecorded(token, assignment.feePips, reason);
     }
 
-    /// @dev Compare cross-products rather than dividing signed returns;
-    /// bounded int128 sums and uint64 counts cannot overflow int256 here.
+    /// @dev Compare cross-products rather than dividing signed returns.
+    /// Every selected token remains in the denominator. An unresolved or
+    /// censored token contributes a -50% provisional score, preventing a
+    /// high-fee arm with only a few lucky closed exits from hiding its idle
+    /// and stuck assignments. This penalty is a selection heuristic, not an
+    /// observed loss, and is replaced if a selected token closes.
     function _bestArm() private view returns (uint8 best) {
         uint64 bestCount;
-        int128 bestSum;
+        int256 bestSum;
         for (uint8 arm; arm < ARM_COUNT; ++arm) {
-            ArmStats storage stats = armStats[arm];
-            uint64 count = stats.closed;
+            uint64 count = armAssignments[arm];
             if (count == 0) continue;
-            int128 sum = stats.netReturnSumBps;
+            int256 sum = _selectionSum(arm);
             if (
                 bestCount == 0 ||
-                int256(sum) * int256(uint256(bestCount)) >
-                    int256(bestSum) * int256(uint256(count))
+                sum * int256(uint256(bestCount)) >
+                    bestSum * int256(uint256(count))
             ) {
                 best = arm;
                 bestCount = count;
                 bestSum = sum;
             }
         }
+    }
+
+    function _selectionSum(uint8 arm) private view returns (int256) {
+        ArmStats storage stats = armStats[arm];
+        return int256(stats.netReturnSumBps) +
+            int256(UNRESOLVED_PENALTY_BPS) *
+            int256(uint256(armAssignments[arm] - stats.closed));
     }
 }

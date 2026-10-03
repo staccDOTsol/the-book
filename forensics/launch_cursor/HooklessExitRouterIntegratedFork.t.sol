@@ -7,7 +7,6 @@ import {PositionInspector} from "./PositionInspector.sol";
 import {PonsActiveExitAdapter} from "./PonsActiveExitAdapter.sol";
 import {ExitSettlementRouter} from "./ExitSettlementRouter.sol";
 import {ExitRouterForkPoolSeeder, ExitRouterForkWETH, ExitRouterForkFanout} from "./ExitSettlementRouterFork.t.sol";
-import {ForkMockPriceGuard} from "./HooklessLPFork.t.sol";
 import {
     SeedableQuoteExitExecutor,
     QuoteExitMockPositionManager,
@@ -73,14 +72,13 @@ contract HooklessExitRouterIntegratedForkTest {
         PositionInspector inspector = new PositionInspector(address(s.executor));
         address[] memory endpoints = new address[](0);
         s.quote = new LaunchCursorToken(
-            "Fork Integrated Q", "Q", 1_000_000_000 ether,
+            LaunchCursorToken.Metadata("Fork Integrated Q", "Q", "Fork integrated quote", "ipfs://fork-integrated-q"),
+            1_000_000_000 ether,
             FACTORY, address(s.executor), address(inspector), 30, 3_000_000, 1 gwei, endpoints
         );
         s.executor.bindController(address(s.quote));
         inspector.bindCursor(address(s.quote));
 
-        ForkMockPriceGuard guard = new ForkMockPriceGuard(FACTORY, address(s.stateView), address(s.quote));
-        s.executor.bindPriceGuard(address(guard));
         s.weth = new ExitRouterForkWETH();
         s.fanout = new ExitRouterForkFanout();
         ExitRouterForkPoolSeeder seeder = new ExitRouterForkPoolSeeder(POOL_MANAGER, address(s.quote));
@@ -112,11 +110,11 @@ contract HooklessExitRouterIntegratedForkTest {
             .previewNativeActiveSale(ACTIVE_X, xAmount);
         require(quotedEth > 1, "no executable active quote");
         vm.prank(address(s.quote));
-        s.executor.configureExit(ACTIVE_X, HooklessLPExecutor.ExitConfig({
-            minTokenOut: 1, minQuoteOut: 0,
+        s.executor.configureExit(ACTIVE_X, abi.encode(HooklessLPExecutor.ExitConfig({
+            tranche: 0, minTokenOut: 1, minQuoteOut: 0,
             minEthOut: quotedEth * 95 / 100, minQOut: 1,
-            deadline: uint64(block.timestamp + 60)
-        }));
+            deadline: uint64(block.timestamp + 60), timed: false
+        })));
     }
 
     function _prepareGraduatedExit(Setup memory s) private {
@@ -132,10 +130,10 @@ contract HooklessExitRouterIntegratedForkTest {
             ? HooklessTickMath.getSqrtPriceAtTick(100)
             : HooklessTickMath.getSqrtPriceAtTick(-100));
         vm.prank(address(s.quote));
-        s.executor.configureExit(GRADUATED_X, HooklessLPExecutor.ExitConfig({
-            minTokenOut: 1, minQuoteOut: 0, minEthOut: 1, minQOut: 1,
-            deadline: uint64(block.timestamp + 60)
-        }));
+        s.executor.configureExit(GRADUATED_X, abi.encode(HooklessLPExecutor.ExitConfig({
+            tranche: 0, minTokenOut: 1, minQuoteOut: 0, minEthOut: 1, minQOut: 1,
+            deadline: uint64(block.timestamp + 60), timed: false
+        })));
     }
 
     function _assertExit(Setup memory s, address token, string memory gasLabel) private {

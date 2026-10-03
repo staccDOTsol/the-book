@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offchain Q position inspector and size-aware exit planner.
 
-Confirmed Q open/exit events feed a durable active-position queue. Live mode
-may sign only PositionInspector.poke, Q.configureExit, and Q.processNext.
+Confirmed Q opens and final-closure events feed a durable active-pool queue.
+Live mode may sign only PositionInspector.poke, Q.requestWindDown,
+Q.configureExit, and Q.processNext.
 """
 
 from __future__ import annotations
@@ -30,11 +31,16 @@ import pons_price_keeper as price
 DEFAULT_STATE = price.LOCAL / "pons-exit-keeper.json"
 STEP_SUCCEEDED = "0x" + keccak(text="StepSucceeded(address,uint8)").hex()
 LAUNCH_ABORTED = "0x" + keccak(text="LaunchAborted(address,uint256,uint256)").hex()
-CONFIGURE_EXIT = price.selector("configureExit(address,(uint128,uint128,uint256,uint256,uint64))")
+ALL_POSITIONS_EXITED = "0x" + keccak(text="AllPositionsExited(address)").hex()
+CONFIGURE_EXIT = price.selector("configureExit(address,bytes)")
 POKE = price.selector("poke(address)")
 PROCESS_NEXT = price.PROCESS_NEXT
-INSPECT = price.selector("inspect(address)")
-WITHDRAW = price.selector("withdrawPosition(address,uint128,uint128,uint64)")
+INSPECT = price.selector("inspectTranche(address,uint8)")
+WITHDRAW = price.selector("withdrawTranche(address,uint8,uint128,uint128,uint64)")
+SIMULATE_TIMED_WITHDRAW = price.selector(
+    "simulateTimedWithdraw(address,uint8,uint128,uint128,uint64)")
+REQUEST_WIND_DOWN = price.selector("requestWindDown(address)")
+WIND_DOWN_SECONDS = 120 * 60
 HARVESTED = price.selector("harvestedAmounts(address)")
 SETTLEMENT_ROUTER = price.selector("settlementRouter()")
 ACTIVE_SALE = price.selector("activeSale()")
@@ -47,7 +53,8 @@ NEXT_ACTION = price.selector("nextAction()")
 EXIT_CONFIGS = price.selector("exitConfigs(address)")
 EXIT_CONFIGURATOR = price.selector("exitConfigurator()")
 OWNER = price.selector("owner()")
-EXIT_CONFIG_TYPES = ["uint128", "uint128", "uint256", "uint256", "uint64"]
+EXIT_CONFIG_TYPES = ["uint8", "uint128", "uint128", "uint256", "uint256", "uint64", "bool"]
+EXIT_CONFIG_TUPLE = "(uint8,uint128,uint128,uint256,uint256,uint64,bool)"
 LAUNCH_STATE_TYPES = ["uint8", "bool", "uint64", "uint64", "uint64", "uint64",
                       "uint32", "bool", "bool", "uint64", "uint32", "bool"]
 
@@ -114,10 +121,12 @@ class ExitPlan:
     expected_eth: int
     expected_bought_q: int
     quote_boundary: bool
+    tranche: int = 0
+    timed: bool = False
 
-    def abi_config(self) -> tuple[int, int, int, int, int]:
-        return (self.min_token_out, self.min_quote_out,
-                self.min_eth_out, self.min_q_out, self.deadline)
+    def abi_config(self) -> tuple[int, int, int, int, int, int, bool]:
+        return (self.tranche, self.min_token_out, self.min_quote_out,
+                self.min_eth_out, self.min_q_out, self.deadline, self.timed)
 
 
 def verify_bindings(rpc: watch.Rpc, chain_id: int, q: str, guard: str, quoter: str,
@@ -176,33 +185,54 @@ def confirmed_stale_exit(rpc: watch.Rpc, q: str, token: str,
     return int(confirmed[0]) in (3, 5)
 
 
-def inspect(rpc: watch.Rpc, executor: str, token: str) -> tuple[int, bool, bool, bool, bool]:
-    result = price.call_abi(rpc, executor, INSPECT, ["address"], [token],
+def inspect(rpc: watch.Rpc, executor: str, token: str,
+            tranche: int = 0) -> tuple[int, bool, bool, bool, bool]:
+    result = price.call_abi(rpc, executor, INSPECT, ["address", "uint8"], [token, tranche],
                             ["uint160", "bool", "bool", "bool", "bool"])
     return (int(result[0]), bool(result[1]), bool(result[2]), bool(result[3]), bool(result[4]))
 
 
+def inspect_active_tranches(rpc: watch.Rpc, executor: str, token: str
+                            ) -> list[tuple[int, tuple[int, bool, bool, bool, bool]]]:
+    observed = []
+    for tranche in range(3):
+        try:
+            observed.append((tranche, inspect(rpc, executor, token, tranche)))
+        except (watch.WatcherError, price.KeeperError):
+            # A closed tranche reverts. At least one live tranche must remain.
+            continue
+    if not observed:
+        raise WaitForExit("active position inspection unavailable")
+    return observed
+
+
 def needs_poke(launch: tuple[Any, ...], observed: tuple[int, bool, bool, bool, bool]) -> bool:
-    if int(launch[0]) != 2:
+    if int(launch[0]) != 2 or bool(launch[7]):
         return False
     _, in_band, at_quote, at_token, was_entered = observed
-    entered_reported = int(launch[4]) > 0
-    if not entered_reported and (in_band or at_token):
+    if not was_entered and (in_band or at_token):
         return True
-    return (not bool(launch[7]) and (was_entered or entered_reported) and
-            (at_quote or at_token))
+    return was_entered and (at_quote or at_token)
+
+
+def timed_eligible(launch: tuple[Any, ...], now: int) -> bool:
+    active_at = int(launch[3])
+    return int(launch[0]) == 2 and active_at > 0 and now >= active_at + WIND_DOWN_SECONDS
 
 
 def _simulate_withdraw(rpc: watch.Rpc, bindings: ExitBindings, token: str,
-                       min_x: int, min_q: int, deadline: int) -> tuple[int, int]:
-    data = WITHDRAW + encode(["address", "uint128", "uint128", "uint64"],
-                             [token, min_x, min_q, deadline]).hex()
+                       tranche: int, min_x: int, min_q: int,
+                       deadline: int, timed: bool = False) -> tuple[int, int]:
+    selector = SIMULATE_TIMED_WITHDRAW if timed else WITHDRAW
+    data = selector + encode(["address", "uint8", "uint128", "uint128", "uint64"],
+                             [token, tranche, min_x, min_q, deadline]).hex()
     raw = rpc.call("eth_call", [{"from": bindings.q, "to": bindings.executor,
                                  "data": data}, "latest"])
     try:
         new_x, new_q = decode(["uint256", "uint256"], bytes.fromhex(raw[2:]))
     except (ValueError, TypeError, DecodingError, AttributeError) as exc:
-        raise ExitError("withdrawPosition simulation returned malformed receipts") from exc
+        method = "simulateTimedWithdraw" if timed else "withdrawTranche"
+        raise ExitError(f"{method} simulation returned malformed receipts") from exc
     return int(new_x), int(new_q)
 
 
@@ -220,22 +250,31 @@ def plan_exit(rpc: watch.Rpc, bindings: ExitBindings, token: str,
     snapshot_quotes = quotes.at_block(head) if hasattr(quotes, "at_block") else quotes
     timestamp = price.latest_block_time(snapshot)
     launch_state = q_launch(snapshot, bindings.q, token)
-    if int(launch_state[0]) != 2 or not launch_state[7] or int(launch_state[4]) == 0:
-        raise WaitForExit("Q position is not active, entered, and exit-ready")
-    _, _, at_quote, at_token, entered = inspect(snapshot, bindings.executor, token)
-    if not entered or not (at_quote or at_token) or at_quote == at_token:
+    if int(launch_state[0]) != 2 or not launch_state[7]:
+        raise WaitForExit("Q position is not active and exit-ready")
+    timed = timed_eligible(launch_state, timestamp)
+    if not timed and int(launch_state[4]) == 0:
+        raise WaitForExit("Q position has not entered a band")
+    observed = inspect_active_tranches(snapshot, bindings.executor, token)
+    candidates = (observed if timed else
+                  [(i, row) for i, row in observed
+                   if row[4] and row[2] != row[3] and (row[2] or row[3])])
+    if not candidates:
         raise WaitForExit("position is not at a live one-sided exit boundary")
+    tranche, (_, _, at_quote, at_token, _) = candidates[0]
     launch = price.read_launch(snapshot, token)
     if watch.address(launch[4]) != price.ZERO:
         raise WaitForExit("Pons launch is not paired with native ETH")
     phase = int(launch[10])
     deadline = timestamp + settings.ttl_seconds
     try:
-        new_x, new_q = _simulate_withdraw(snapshot, bindings, token,
-                                          0 if at_quote else 1,
-                                          1 if at_quote else 0, deadline)
-    except watch.WatcherError as exc:
-        raise WaitForExit("withdrawPosition simulation failed") from exc
+        new_x, new_q = _simulate_withdraw(snapshot, bindings, token, tranche,
+                                          0 if timed or at_quote else 1,
+                                          0 if timed or at_token else 1,
+                                          deadline, timed)
+    except (watch.WatcherError, ExitError) as exc:
+        method = "simulateTimedWithdraw" if timed else "withdrawTranche"
+        raise WaitForExit(f"{method} simulation failed") from exc
     harvested_x, harvested_q = (int(v) for v in price.call_abi(
         snapshot, bindings.executor, HARVESTED, ["address"], [token], ["uint256", "uint256"]))
     total_x = new_x + harvested_x
@@ -243,7 +282,7 @@ def plan_exit(rpc: watch.Rpc, bindings: ExitBindings, token: str,
         raise WaitForExit("simulated exit has no settleable receipts")
     min_x = _min_receipt(new_x, settings.lp_slippage_bps)
     min_q = _min_receipt(new_q, settings.lp_slippage_bps)
-    if at_quote and min_q == 0 or at_token and min_x == 0:
+    if not timed and (at_quote and min_q == 0 or at_token and min_x == 0):
         raise WaitForExit("boundary asset has no simulated principal receipt")
     expected_eth = expected_bought_q = min_eth = min_bought_q = 0
     if total_x:
@@ -275,28 +314,48 @@ def plan_exit(rpc: watch.Rpc, bindings: ExitBindings, token: str,
             raise WaitForExit("Q/ETH buy has insufficient conservative output")
     # The proposed LP minima must still pass the same pinned burn simulation.
     try:
-        checked_x, checked_q = _simulate_withdraw(snapshot, bindings, token,
-                                                   min_x, min_q, deadline)
-    except watch.WatcherError as exc:
-        raise WaitForExit("bounded withdrawPosition simulation failed") from exc
+        checked_x, checked_q = _simulate_withdraw(snapshot, bindings, token, tranche,
+                                                   min_x, min_q, deadline, timed)
+    except (watch.WatcherError, ExitError) as exc:
+        method = "simulateTimedWithdraw" if timed else "withdrawTranche"
+        raise WaitForExit(f"bounded {method} simulation failed") from exc
     if (checked_x, checked_q) != (new_x, new_q):
-        raise ExitError("withdrawPosition receipts changed within pinned block")
+        raise ExitError("withdraw receipts changed within pinned block")
     if watch.block_hash(rpc, head) != anchor_hash:
         raise WaitForExit("pinned exit block changed during planning")
     if price.latest_block_time(rpc) - timestamp > settings.max_snapshot_age_seconds:
         raise WaitForExit("pinned exit snapshot became stale")
     return ExitPlan(token, min_x, min_q, min_eth, min_bought_q, deadline,
                     new_x, new_q, harvested_x, harvested_q, total_x,
-                    expected_eth, expected_bought_q, at_quote)
+                    expected_eth, expected_bought_q, at_quote, tranche, timed)
 
 
 def configure_exit_data(plan: ExitPlan) -> str:
-    return CONFIGURE_EXIT + encode(["address", "(uint128,uint128,uint256,uint256,uint64)"],
-                                   [plan.token, plan.abi_config()]).hex()
+    encoded_config = encode([EXIT_CONFIG_TUPLE], [plan.abi_config()])
+    return CONFIGURE_EXIT + encode(["address", "bytes"], [plan.token, encoded_config]).hex()
+
+
+def decode_exit_config_data(data: str) -> tuple[str, tuple[int, int, int, int, int, int, bool]]:
+    if not isinstance(data, str) or not data.startswith(CONFIGURE_EXIT):
+        raise ExitError("attempted non-exit transaction")
+    try:
+        payload = bytes.fromhex(data[10:])
+        token, encoded_config = decode(["address", "bytes"], payload)
+        config = decode([EXIT_CONFIG_TUPLE], encoded_config)[0]
+        if (encode(["address", "bytes"], [token, encoded_config]) != payload or
+                encode([EXIT_CONFIG_TUPLE], [config]) != encoded_config):
+            raise ExitError("exit transaction payload is not canonical")
+    except (ValueError, TypeError, DecodingError) as exc:
+        raise ExitError("exit transaction payload is undecodable") from exc
+    return watch.address(token), (*[int(v) for v in config[:-1]], bool(config[-1]))
 
 
 def poke_data(token: str) -> str:
     return POKE + encode(["address"], [token]).hex()
+
+
+def request_wind_down_data(token: str) -> str:
+    return REQUEST_WIND_DOWN + encode(["address"], [token]).hex()
 
 
 def discover_active(rpc: watch.Rpc, state: price.KeeperState, store: price.KeeperStore,
@@ -310,7 +369,8 @@ def discover_active(rpc: watch.Rpc, state: price.KeeperState, store: price.Keepe
         first, last = state.last_block + 1, min(safe_head, state.last_block + block_span)
         expected_hash = watch.block_hash(rpc, last)
         logs = rpc.call("eth_getLogs", [{"address": state.q,
-                                        "topics": [[STEP_SUCCEEDED, LAUNCH_ABORTED]],
+                                        "topics": [[STEP_SUCCEEDED, LAUNCH_ABORTED,
+                                                    ALL_POSITIONS_EXITED]],
                                         "fromBlock": hex(first), "toBlock": hex(last)}])
         if not isinstance(logs, list) or watch.block_hash(rpc, last) != expected_hash:
             raise ExitError("confirmed Q event range changed during backfill")
@@ -325,7 +385,7 @@ def discover_active(rpc: watch.Rpc, state: price.KeeperState, store: price.Keepe
             if str(log.get("blockHash", "")).lower() != watch.block_hash(rpc, block):
                 raise ExitError("Q event block is not canonical")
             topic = str(log["topics"][0]).lower()
-            if topic not in (STEP_SUCCEEDED, LAUNCH_ABORTED):
+            if topic not in (STEP_SUCCEEDED, LAUNCH_ABORTED, ALL_POSITIONS_EXITED):
                 raise ExitError("unexpected Q event topic")
             word = str(log["topics"][1])
             if not watch.HASH.fullmatch(word) or int(word[2:26], 16):
@@ -340,9 +400,6 @@ def discover_active(rpc: watch.Rpc, state: price.KeeperState, store: price.Keepe
                     state.tokens.append(token)
                     active.add(token)
                     found += 1
-                elif step == 1 and token in active:
-                    state.tokens.remove(token)
-                    active.remove(token)
                 elif step not in (0, 1, 2):
                     raise ExitError("unknown Q step in event")
             elif token in active:
@@ -356,17 +413,18 @@ def discover_active(rpc: watch.Rpc, state: price.KeeperState, store: price.Keepe
 
 
 class ExitSigner:
-    """Persist, validate, and recover only the three exit-loop selectors."""
+    """Persist, validate, and recover the bounded exit-loop selectors."""
 
     def __init__(self, rpc: watch.Rpc, bindings: ExitBindings, chain_id: int,
                  private_key: str, confirmations: int, max_poke_gas: int,
                  max_config_gas: int, max_process_gas: int, max_fee_wei: int,
-                 max_priority_wei: int, receipt_timeout: int, poll_seconds: float):
+                 max_priority_wei: int, receipt_timeout: int, poll_seconds: float,
+                 max_wind_down_gas: int = 500_000):
         self.account = Account.from_key(private_key)
         self.rpc, self.bindings, self.chain_id = rpc, bindings, chain_id
         self.confirmations = confirmations
-        self.gas_caps = {"poke": max_poke_gas, "configure": max_config_gas,
-                         "process": max_process_gas}
+        self.gas_caps = {"poke": max_poke_gas, "wind_down": max_wind_down_gas,
+                         "configure": max_config_gas, "process": max_process_gas}
         self.max_fee_wei, self.max_priority_wei = max_fee_wei, max_priority_wei
         self.receipt_timeout, self.poll_seconds = receipt_timeout, poll_seconds
 
@@ -383,23 +441,27 @@ class ExitSigner:
             if data != PROCESS_NEXT:
                 raise ExitError("processNext payload must have no arguments")
             return
-        if kind not in ("poke", "configure") or not isinstance(data, str) or not data.startswith(
-                POKE if kind == "poke" else CONFIGURE_EXIT):
+        if kind not in ("poke", "wind_down", "configure") or not isinstance(data, str) or not data.startswith(
+                POKE if kind == "poke" else REQUEST_WIND_DOWN if kind == "wind_down" else CONFIGURE_EXIT):
             raise ExitError("attempted non-exit transaction")
-        payload_type = (["address"] if kind == "poke" else
-                        ["address", "(uint128,uint128,uint256,uint256,uint64)"])
-        if len(data) != 10 + 64 * (1 if kind == "poke" else 6):
-            raise ExitError("exit transaction payload length is invalid")
-        try:
-            decoded = decode(payload_type, bytes.fromhex(data[10:]))
-        except (ValueError, TypeError, DecodingError) as exc:
-            raise ExitError("exit transaction payload is undecodable") from exc
-        if watch.address(decoded[0]) != token:
-            raise ExitError("exit transaction token mismatch")
-        if kind == "configure":
-            min_x, min_q, min_eth, min_bought_q, deadline = decoded[1]
+        if kind in ("poke", "wind_down"):
+            if len(data) != 10 + 64:
+                raise ExitError("exit transaction payload length is invalid")
+            try:
+                decoded = decode(["address"], bytes.fromhex(data[10:]))
+            except (ValueError, TypeError, DecodingError) as exc:
+                raise ExitError("exit transaction payload is undecodable") from exc
+            if encode(["address"], [decoded[0]]) != bytes.fromhex(data[10:]):
+                raise ExitError("exit transaction payload is not canonical")
+            if watch.address(decoded[0]) != token:
+                raise ExitError("exit transaction token mismatch")
+        else:
+            configured_token, config = decode_exit_config_data(data)
+            if configured_token != token:
+                raise ExitError("exit transaction token mismatch")
+            tranche, min_x, min_q, min_eth, min_bought_q, deadline, _timed = config
             if (not (min_x or min_q) or (bool(min_eth) != bool(min_bought_q)) or
-                    deadline == 0):
+                    deadline == 0 or tranche > 2):
                 raise ExitError("configureExit minima are invalid")
 
     def _wait_receipt(self, tx_hash: str) -> None:
@@ -414,7 +476,7 @@ class ExitSigner:
                store: price.KeeperStore, purpose: str | None = None) -> None:
         token = watch.address(token)
         self._check_payload(kind, token, data)
-        if (kind == "process" and purpose not in ("configured_exit", "stale_cleanup")) or \
+        if (kind == "process" and purpose not in ("configured_exit", "configured_harvest", "stale_cleanup")) or \
                 (kind != "process" and purpose is not None):
             raise ExitError("exit transaction purpose is invalid")
         if purpose == "stale_cleanup":
@@ -425,6 +487,15 @@ class ExitSigner:
                                              self.confirmations)):
                 raise WaitForExit("stale exit is no longer the confirmed Q root")
         target = self._target(kind)
+        if kind == "wind_down":
+            try:
+                raw = self.rpc.call("eth_call", [{"from": self.signer, "to": target,
+                                                   "data": data}, "latest"])
+                (would_queue,) = decode(["bool"], bytes.fromhex(raw[2:]))
+            except (watch.WatcherError, ValueError, TypeError, DecodingError, AttributeError) as exc:
+                raise WaitForExit("Q wind-down request simulation unavailable") from exc
+            if not would_queue:
+                raise WaitForExit("Q wind-down request would not queue an exit")
         try:
             estimate = watch.quantity(self.rpc.call("eth_estimateGas", [{"from": self.signer,
                                   "to": target, "data": data}]), "gas estimate")
@@ -478,7 +549,7 @@ class ExitSigner:
                 not watch.HASH.fullmatch(tx_hash) or not isinstance(raw_hex, str) or
                 not raw_hex.startswith("0x") or len(raw_hex) > 4098 or len(raw_hex) % 2):
             raise ExitError("pending exit transaction is malformed")
-        if (kind == "process" and purpose not in ("configured_exit", "stale_cleanup")) or \
+        if (kind == "process" and purpose not in ("configured_exit", "configured_harvest", "stale_cleanup")) or \
                 (kind != "process" and purpose is not None):
             raise ExitError("pending exit transaction purpose is invalid")
         self._check_payload(kind, token, data)
@@ -506,6 +577,9 @@ class ExitSigner:
     def _unknown_safe(self, kind: str, token: str, data: str, purpose: str | None,
                       settings: ExitSettings, quotes: price.ExecutableQuoteProvider) -> bool:
         launch = q_launch(self.rpc, self.bindings.q, token)
+        if kind == "wind_down":
+            return (timed_eligible(launch, price.latest_block_time(self.rpc)) and
+                    not bool(launch[7]))
         if kind == "process":
             selected_token, step, eligible_at = q_next_action(self.rpc, self.bindings.q)
             if (selected_token != token or step != 1 or
@@ -523,21 +597,24 @@ class ExitSigner:
             except (watch.WatcherError, price.KeeperError):
                 return False
             now = price.latest_block_time(self.rpc)
-            return (bool(int(config[0]) or int(config[1])) and
-                    bool(config[2]) == bool(config[3]) and
-                    int(config[4]) >= now + 30)
+            return (int(config[0]) <= 2 and bool(int(config[1]) or int(config[2])) and
+                    bool(config[3]) == bool(config[4]) and
+                    (not bool(config[6]) or timed_eligible(launch, now)) and
+                    int(config[5]) >= now + 30)
         if int(launch[0]) != 2:
             return False
         if kind == "poke":
-            return needs_poke(launch, inspect(self.rpc, self.bindings.executor, token))
+            return any(needs_poke(launch, observed) for _, observed in
+                       inspect_active_tranches(self.rpc, self.bindings.executor, token))
         if not launch[7]:
             return False
         fresh = plan_exit(self.rpc, self.bindings, token, settings, quotes)
-        _, old = decode(["address", "(uint128,uint128,uint256,uint256,uint64)"],
-                        bytes.fromhex(data[10:]))
-        old_x, old_q, old_eth, old_bought_q, deadline = (int(v) for v in old)
+        _, old = decode_exit_config_data(data)
+        tranche, old_x, old_q, old_eth, old_bought_q, deadline, timed = old
         now = price.latest_block_time(self.rpc)
         if not now + 30 <= deadline <= now + 900:
+            return False
+        if tranche != fresh.tranche or timed != fresh.timed:
             return False
         if (old_x < fresh.min_token_out or old_q < fresh.min_quote_out or
                 old_x > fresh.simulated_new_x or old_q > fresh.simulated_new_q):
@@ -596,31 +673,49 @@ def run_cycle(rpc: watch.Rpc, bindings: ExitBindings, state: price.KeeperState,
     found = discover_active(rpc, state, store, confirmations, block_span)
     waiting: dict[str, int] = {}
     selected: tuple[str, int, int] | None = None
-    # Check every confirmed active position; a boundary can arrive long after
-    # its open event, and a phase-1 sale becomes tradeable after graduation.
+    # Check every confirmed active position. After 120 minutes, request Q's
+    # timed exit even if no tranche ever entered a band.
     for token in state.tokens[:]:
         launch = q_launch(rpc, bindings.q, token)
         stage = int(launch[0])
         if stage != 2:
-            # Discovery alone may remove a token, after a confirmed Exit or
+            # Discovery alone may remove a token, after a confirmed final Exit or
             # Abort event. A latest-stage close can still reorg away.
             waiting["await confirmed Q close"] = waiting.get("await confirmed Q close", 0) + 1
             continue
-        try:
-            observed = inspect(rpc, bindings.executor, token)
-        except (watch.WatcherError, price.KeeperError) as exc:
-            raise WaitForExit("active position inspection unavailable") from exc
-        if needs_poke(launch, observed):
+        now = price.latest_block_time(rpc)
+        timed = timed_eligible(launch, now)
+        if timed and not launch[7]:
             if signer is None:
-                return {"status": "poke_ready_read_only", "token": token,
+                return {"status": "wind_down_ready_read_only", "token": token,
                         "found": found, "active": len(state.tokens)}
             try:
-                signer.submit("poke", token, poke_data(token), state, store)
+                signer.submit("wind_down", token, request_wind_down_data(token), state, store)
             except WaitForExit as exc:
                 waiting[str(exc)] = waiting.get(str(exc), 0) + 1
                 continue
-            return {"status": "poked", "token": token,
+            queued = q_launch(rpc, bindings.q, token)
+            if int(queued[0]) != 2 or not queued[7]:
+                waiting["Q wind-down request did not queue an exit"] = 1
+                continue
+            return {"status": "wind_down_requested", "token": token,
                     "found": found, "active": len(state.tokens)}
+        if not timed:
+            try:
+                observed = inspect_active_tranches(rpc, bindings.executor, token)
+            except (watch.WatcherError, price.KeeperError) as exc:
+                raise WaitForExit("active position inspection unavailable") from exc
+            if any(needs_poke(launch, row) for _, row in observed):
+                if signer is None:
+                    return {"status": "poke_ready_read_only", "token": token,
+                            "found": found, "active": len(state.tokens)}
+                try:
+                    signer.submit("poke", token, poke_data(token), state, store)
+                except WaitForExit as exc:
+                    waiting[str(exc)] = waiting.get(str(exc), 0) + 1
+                    continue
+                return {"status": "poked", "token": token,
+                        "found": found, "active": len(state.tokens)}
         if not launch[7]:
             continue
         if selected is None:
@@ -709,6 +804,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ttl-seconds", type=int, default=120)
     parser.add_argument("--max-snapshot-age-seconds", type=int, default=20)
     parser.add_argument("--max-poke-gas", type=int, default=500000)
+    parser.add_argument("--max-wind-down-gas", type=int, default=500000)
     parser.add_argument("--max-config-gas", type=int, default=500000)
     parser.add_argument("--max-process-gas", type=int, default=3500000)
     parser.add_argument("--max-fee-gwei", default="5")
@@ -723,7 +819,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.http_url or not args.chain_id or not args.q or not args.guard:
         parser.error("HTTP URL, chain ID, Q, and guard are required")
     if (args.confirmations < 1 or args.block_span < 1 or args.poll_seconds <= 0 or
-            args.max_poke_gas < 21000 or args.max_config_gas < 21000 or
+            args.max_poke_gas < 21000 or args.max_wind_down_gas < 21000 or
+            args.max_config_gas < 21000 or
             args.max_process_gas < 21000 or args.receipt_timeout < 1):
         parser.error("invalid confirmation, span, poll, gas, or receipt setting")
     settings = ExitSettings(args.lp_slippage_bps, args.swap_slippage_bps,
@@ -745,7 +842,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ExitError("priority fee cap exceeds max fee cap")
     signer = (ExitSigner(rpc, bindings, args.chain_id, private_key, args.confirmations,
                          args.max_poke_gas, args.max_config_gas, args.max_process_gas,
-                         fee_cap, priority_cap, args.receipt_timeout, args.poll_seconds)
+                         fee_cap, priority_cap, args.receipt_timeout, args.poll_seconds,
+                         args.max_wind_down_gas)
               if private_key else None)
     with (ExitConfiguratorLock(q, args.state) if signer else nullcontext()), \
             price.KeeperStore(args.state) as store:
@@ -753,7 +851,16 @@ def main(argv: list[str] | None = None) -> int:
         if state.pending_tx is not None:
             if signer is None:
                 raise ExitError("read-only mode cannot recover an outstanding signed transaction")
-            signer.recover(state, store, settings, quotes)
+            import pons_harvest_keeper as harvest
+            if harvest.is_harvest_pending(state.pending_tx):
+                harvest_signer = harvest.HarvestSigner(
+                    rpc, bindings, args.chain_id, private_key, args.confirmations,
+                    args.max_poke_gas, args.max_config_gas, args.max_process_gas,
+                    fee_cap, priority_cap, args.receipt_timeout, args.poll_seconds,
+                    args.max_wind_down_gas)
+                harvest_signer.recover(state, store, settings, quotes)
+            else:
+                signer.recover(state, store, settings, quotes)
         while True:
             try:
                 result = run_cycle(rpc, bindings, state, store, settings, quotes,

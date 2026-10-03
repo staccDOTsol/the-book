@@ -21,6 +21,7 @@ import q_status_dashboard as dashboard
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 Q = "0x" + "a" * 40
 GUARD = "0x" + "b" * 40
+ZERO = "0x" + "0" * 40
 TOKEN = "0x" + "c" * 40
 HASH = "0x" + "d" * 64
 
@@ -31,7 +32,7 @@ def component(name, *, q=Q, secret="signed-raw-tx-secret"):
     if name == "watcher":
         data["pending"] = {"rawTransaction": secret}
     else:
-        data.update(guard=GUARD, tokens=[TOKEN],
+        data.update(guard=ZERO if name == "price" else GUARD, tokens=[TOKEN],
                     pendingTx={"rawTx": secret} if name == "price" else None)
     return data
 
@@ -41,10 +42,12 @@ def supervisor_heartbeat(*, at=NOW, status="running", exit_at=None, price_at=Non
     price_at = price_at or at
     return {"schemaVersion": 1, "updatedAt": at.isoformat(),
             "status": status, "watcherStatus": "process_running",
-            "lastCompletedKeepers": ["exit", "price"],
+            "lastCompletedKeepers": ["exit", "price", "feedback", "harvest"],
             "lastCompletedAt": at.isoformat(), "consecutiveFailures": 0,
             "lastCompletedAtByKeeper": {"exit": exit_at.isoformat(),
-                                        "price": price_at.isoformat()},
+                                        "price": price_at.isoformat(),
+                                        "feedback": at.isoformat(),
+                                        "harvest": at.isoformat()},
             "watcherConsecutiveFailures": 0, "lastError": None}
 
 
@@ -123,6 +126,25 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(report["components"]["price"]["state"], "invalid")
         self.assertEqual(report["runtime"]["state"], "attention")
 
+    def test_price_and_exit_guard_roles_are_checked_independently(self):
+        self.save_components()
+        (self.local / dashboard.SUPERVISOR_FILE).write_text(json.dumps(supervisor_heartbeat()))
+        report = dashboard.snapshot(self.local, NOW)
+        self.assertEqual(report["runtime"]["state"], "live_reported")
+        self.assertEqual(report["components"]["price"]["guard"], ZERO)
+        self.assertEqual(report["components"]["exit"]["guard"], GUARD)
+        price_path = self.local / dashboard.JOURNALS["price"][0]
+        invalid_price = component("price")
+        invalid_price["guard"] = GUARD
+        price_path.write_text(json.dumps(invalid_price))
+        self.assertEqual(dashboard.snapshot(self.local, NOW)["runtime"]["state"], "attention")
+        price_path.write_text(json.dumps(component("price")))
+        exit_path = self.local / dashboard.JOURNALS["exit"][0]
+        invalid_exit = component("exit")
+        invalid_exit["guard"] = ZERO
+        exit_path.write_text(json.dumps(invalid_exit))
+        self.assertEqual(dashboard.snapshot(self.local, NOW)["runtime"]["state"], "attention")
+
     def test_wrong_chain_journal_cannot_report_live(self):
         self.save_components()
         (self.local / dashboard.SUPERVISOR_FILE).write_text(json.dumps(supervisor_heartbeat()))
@@ -186,7 +208,8 @@ class SupervisorJournalTests(unittest.TestCase):
             self.assertEqual(payload["schemaVersion"], 1)
             self.assertEqual(payload["lastCompletedKeepers"], ["exit"])
             self.assertEqual(payload["lastCompletedAtByKeeper"],
-                             {"exit": NOW.isoformat(), "price": None})
+                             {"exit": NOW.isoformat(), "price": None,
+                              "feedback": None, "harvest": None})
             self.assertEqual(payload["lastError"]["type"], "OSError")
             self.assertNotIn(secret, path.read_text())
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)

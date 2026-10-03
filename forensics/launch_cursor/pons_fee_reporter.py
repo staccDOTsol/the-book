@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Bounded, canonical receipt collector for pending hookless fee outcomes.
 
-This collector intentionally NEVER signs or broadcasts. A fee-arm score must
-not be submitted until a complete attributable strategy-gas audit exists.
-The current onchain events cannot assign reverted or shared crank gas to one
-token, so each observation remains non-reportable even when its Q cost and
-exit cash are known. See pons_fee_reporter.md.
+This module authenticates minted Q, position, settlement, and swap events.
+The companion feedback keeper adds historical executable Q/ETH quotes and
+may submit a clearly labeled gross mark-to-market fee score. This CLI remains
+read-only and never signs or broadcasts.
 """
 
 from __future__ import annotations
@@ -38,11 +37,15 @@ def topic(signature: str) -> str:
 
 
 PENDING = topic("FeeOutcomePending(address,uint64)")
+ALL_POSITIONS_EXITED = topic("AllPositionsExited(address)")
 REPORTED = topic("FeeOutcomeReported(address,int32,bytes32)")
 CENSORED = topic("FeeOutcomeCensored(address)")
 FEE_SELECTED = topic("FeeSelected(address,uint24,uint8,bool)")
 POSITION_OPENED = topic("PositionOpened(address,bytes32,uint256,uint24,uint256)")
+OPEN_MINTED = topic("OpenMinted(address,uint256,uint256)")
+OPEN_TRANCHE_MINTED = topic("OpenTrancheMinted(address,uint8,uint256,uint256)")
 POSITION_SETTLED = topic("PositionSettled(address,uint256,uint256,uint256,uint256)")
+FEES_SETTLED = topic("FeesSettled(address,uint256,uint256,uint256,uint256)")
 EXIT_SETTLED = topic("ExitSettled(address,uint256,uint256,uint256,uint256,uint256,uint256)")
 QUOTE_BOUGHT = topic("QuoteBought(address,bytes32,uint256,uint256)")
 TRANSFER = topic("Transfer(address,address,uint256)")
@@ -182,37 +185,44 @@ class Bindings:
     buyer_pool_id: str
 
 
-def verify_bindings(rpc: watch.Rpc, q: str, buyer: str, buyer_code_hash: str,
+def verify_bindings(rpc: watch.Rpc, q: str, buyer: str | None, buyer_code_hash: str | None,
                     safe_head: int) -> Bindings:
-    q, buyer = watch.address(q), watch.address(buyer)
-    code_hash = _hex(buyer_code_hash, 32, "buyer code hash")
+    q = watch.address(q)
+    buyer = watch.address(buyer) if buyer else ZERO
+    code_hash = _hex(buyer_code_hash, 32, "buyer code hash") if buyer_code_hash else "0x" + "00" * 32
     if watch.quantity(rpc.call("eth_chainId", []), "chain ID") != ROBINHOOD_CHAIN_ID:
         raise ReportError("RPC is not Robinhood mainnet")
     owner = _read_address(rpc, q, "owner()", safe_head)
     executor = _read_address(rpc, q, "executor()", safe_head)
     fee_policy = _read_address(rpc, q, "feePolicy()", safe_head)
     router = _read_address(rpc, executor, "settlementRouter()", safe_head)
-    for name, address in (("Q", q), ("executor", executor), ("router", router),
-                          ("fee policy", fee_policy), ("buyer", buyer)):
+    contracts = [("Q", q), ("executor", executor), ("router", router),
+                 ("fee policy", fee_policy)]
+    if buyer != ZERO:
+        contracts.append(("buyer", buyer))
+    for name, address in contracts:
         code = rpc.call("eth_getCode", [address, hex(safe_head)])
         if not isinstance(code, str) or code == "0x":
             raise ReportError(f"{name} code unavailable")
         if name == "buyer" and "0x" + keccak(bytes.fromhex(code[2:])).hex() != code_hash:
             raise ReportError("buyer runtime code hash changed")
-    if (_read_address(rpc, buyer, "source()", safe_head) != owner or
-            _read_address(rpc, buyer, "quoteToken()", safe_head) != q or
-            _read_address(rpc, buyer, "poolManager()", safe_head) != POOL_MANAGER or
-            _read_address(rpc, router, "quoteToken()", safe_head) != q or
+    if (_read_address(rpc, router, "quoteToken()", safe_head) != q or
             _read_address(rpc, router, "source()", safe_head) != executor):
-        raise ReportError("Q, owner buyer, executor, and router bindings disagree")
-    buyer_pool_id, = _call(rpc, buyer, "poolId()", [], [], ["bytes32"], safe_head)
-    expected_pool_id = keccak(encode(
-        ["address", "address", "uint24", "int24", "address"],
-        [ZERO, q, *_call(rpc, buyer, "fee()", [], [], ["uint24"], safe_head),
-         *_call(rpc, buyer, "tickSpacing()", [], [], ["int24"], safe_head), ZERO]
-    ))
-    if buyer_pool_id != expected_pool_id:
-        raise ReportError("owner buyer is not bound to its declared zero-hook Q/ETH pool")
+        raise ReportError("Q, executor, and router bindings disagree")
+    buyer_pool_id = b"\x00" * 32
+    if buyer != ZERO:
+        if (_read_address(rpc, buyer, "source()", safe_head) != owner or
+                _read_address(rpc, buyer, "quoteToken()", safe_head) != q or
+                _read_address(rpc, buyer, "poolManager()", safe_head) != POOL_MANAGER):
+            raise ReportError("owner buyer bindings disagree")
+        buyer_pool_id, = _call(rpc, buyer, "poolId()", [], [], ["bytes32"], safe_head)
+        expected_pool_id = keccak(encode(
+            ["address", "address", "uint24", "int24", "address"],
+            [ZERO, q, *_call(rpc, buyer, "fee()", [], [], ["uint24"], safe_head),
+             *_call(rpc, buyer, "tickSpacing()", [], [], ["int24"], safe_head), ZERO]
+        ))
+        if buyer_pool_id != expected_pool_id:
+            raise ReportError("owner buyer is not bound to its declared zero-hook Q/ETH pool")
     return Bindings(q, executor, router, fee_policy, buyer, owner, code_hash,
                     "0x" + buyer_pool_id.hex())
 
@@ -349,54 +359,80 @@ def collect_exit(rpc: watch.Rpc, binding: Bindings, token: str,
     indexed = _word_address(token)
     opens = _logs(rpc, binding.executor, [POSITION_OPENED, indexed], start, exit_block, safe_head, cache)
     selections = _logs(rpc, binding.fee_policy, [FEE_SELECTED, indexed], start, exit_block, safe_head, cache)
-    if len(opens) != 1 or len(selections) != 1:
-        raise ReportError("expected one authenticated PositionOpened and FeeSelected")
+    if len(opens) != 3 or len(selections) != 1:
+        raise ReportError("expected three authenticated PositionOpened tranches and one FeeSelected")
     opened, selected = opens[0], selections[0]
+    if len({row["transactionHash"].lower() for row in opens}) != 1:
+        raise ReportError("three position tranches were not opened atomically")
     open_block = watch.quantity(opened["blockNumber"], "open block")
     if open_block > exit_block:
         raise ReportError("position opened after exit")
-    open_fee, quote_spent = _event_data(opened, ["uint24", "uint256"], "PositionOpened")
     chosen_fee, _arm, _explore = _event_data(selected, ["uint24", "uint8", "bool"], "FeeSelected")
-    if open_fee != chosen_fee or quote_spent == 0:
-        raise ReportError("opened position disagrees with selected fee or spent zero Q")
-    (token_id, stored_pool_id, stored_fee, spacing, _lower, _upper, active,
-     _entered, stored_q_spent, _withdrawn_x, _withdrawn_q) = _call(
-         rpc, binding.executor, "positions(address)", ["address"], [token],
-         ["uint256", "bytes32", "uint24", "int24", "int24", "int24", "bool",
-          "bool", "uint256", "uint256", "uint256"], safe_head)
-    expected_pool_id = keccak(encode(
-        ["address", "address", "uint24", "int24", "address"],
-        [min(binding.q, token, key=lambda a: int(a, 16)),
-         max(binding.q, token, key=lambda a: int(a, 16)), open_fee, spacing, ZERO]))
-    if (active or token_id != int(opened["topics"][3], 16) or
-            stored_pool_id != expected_pool_id or
-            stored_pool_id != bytes.fromhex(opened["topics"][2][2:]) or
-            stored_fee != open_fee or stored_q_spent != quote_spent or spacing <= 0):
-        raise ReportError("executor position does not match zero-hook X/Q pool and open event")
+    pool_ids: set[str] = set()
+    token_ids: set[int] = set()
+    spent_by_tranche: list[int] = []
+    for row in opens:
+        if len(row.get("topics", [])) != 4:
+            raise ReportError("PositionOpened has malformed indexed fields")
+        fee, spent = _event_data(row, ["uint24", "uint256"], "PositionOpened")
+        if fee != chosen_fee or spent == 0:
+            raise ReportError("opened tranche disagrees with selected fee or spent zero Q")
+        pool_ids.add(_hex(row["topics"][2], 32, "X/Q pool ID"))
+        token_ids.add(int(_hex(row["topics"][3], 32, "position NFT"), 16))
+        spent_by_tranche.append(int(spent))
+    if len(pool_ids) != 1 or len(token_ids) != 3 or 0 in token_ids:
+        raise ReportError("opened tranches lack one pool and three distinct position NFTs")
+    quote_spent = sum(spent_by_tranche)
+    open_receipt = _receipt(rpc, opened["transactionHash"], safe_head, cache)
+    aggregates = [row for row in open_receipt["logs"] if
+                  str(row.get("address", "")).lower() == binding.q and
+                  row.get("topics", [None])[0].lower() == OPEN_MINTED and
+                  len(row.get("topics", [])) == 2 and
+                  _indexed_address(row["topics"][1], "minted token") == token]
+    tranches = [row for row in open_receipt["logs"] if
+                str(row.get("address", "")).lower() == binding.q and
+                row.get("topics", [None])[0].lower() == OPEN_TRANCHE_MINTED and
+                len(row.get("topics", [])) == 3 and
+                _indexed_address(row["topics"][1], "tranche token") == token]
+    if len(aggregates) != 1 or len(tranches) != 3:
+        raise ReportError("open receipt lacks aggregate and three tranche mint events")
+    minted, aggregate_spent = _event_data(aggregates[0], ["uint256", "uint256"], "OpenMinted")
+    tranche_amounts: list[tuple[int, int]] = []
+    for index, row in enumerate(sorted(tranches, key=lambda item: int(item["topics"][2], 16))):
+        if int(_hex(row["topics"][2], 32, "tranche index"), 16) != index:
+            raise ReportError("open receipt has duplicate or missing tranche index")
+        tranche_amounts.append(tuple(map(int, _event_data(
+            row, ["uint256", "uint256"], "OpenTrancheMinted"))))
+    if (minted < quote_spent or aggregate_spent != quote_spent or
+            sum(item[0] for item in tranche_amounts) != minted or
+            [item[1] for item in tranche_amounts] != spent_by_tranche):
+        raise ReportError("minted Q does not reconcile with three position spends")
+    minted_transfers = [row for row in open_receipt["logs"] if
+                        str(row.get("address", "")).lower() == binding.q and
+                        row.get("topics", [None])[0].lower() == TRANSFER and
+                        len(row.get("topics", [])) == 3 and
+                        _indexed_address(row["topics"][1], "Q mint source") == ZERO and
+                        _indexed_address(row["topics"][2], "Q mint recipient") == binding.executor]
+    unused_burns = [row for row in open_receipt["logs"] if
+                    str(row.get("address", "")).lower() == binding.q and
+                    row.get("topics", [None])[0].lower() == TRANSFER and
+                    len(row.get("topics", [])) == 3 and
+                    _indexed_address(row["topics"][1], "unused Q burn source") == binding.executor and
+                    _indexed_address(row["topics"][2], "unused Q burn recipient") == ZERO]
+    if (sum(int(_event_data(row, ["uint256"], "Q mint")[0]) for row in minted_transfers) != minted or
+            sum(int(_event_data(row, ["uint256"], "unused Q burn")[0]) for row in unused_burns)
+            != minted - quote_spent):
+        raise ReportError("open Q mint and unused burn Transfers do not reconcile")
     exit_receipt = _receipt(rpc, pending["txHash"], safe_head, cache)
     if watch.quantity(exit_receipt["blockNumber"], "exit block") != exit_block:
         raise ReportError("pending event exit block disagrees with receipt")
-    settlements = [row for row in exit_receipt["logs"] if
-                   str(row.get("address", "")).lower() == binding.executor and
-                   row.get("topics", [None])[0].lower() == POSITION_SETTLED and
-                   len(row.get("topics", [])) == 2 and
-                   _indexed_address(row["topics"][1], "settled token") == token]
-    router_events = [row for row in exit_receipt["logs"] if
-                     str(row.get("address", "")).lower() == binding.router and
-                     row.get("topics", [None])[0].lower() == EXIT_SETTLED and
+    final_markers = [row for row in exit_receipt["logs"] if
+                     str(row.get("address", "")).lower() == binding.q and
+                     row.get("topics", [None])[0].lower() == ALL_POSITIONS_EXITED and
                      len(row.get("topics", [])) == 2 and
-                     _indexed_address(row["topics"][1], "router token") == token]
-    if len(settlements) != 1 or len(router_events) != 1:
-        raise ReportError("exit receipt lacks unique executor and router settlement")
-    x, q, eth_out, burned = _event_data(settlements[0], ["uint256"] * 4, "PositionSettled")
-    x_sold, router_eth, q_bought, router_burned, wizard, developer = \
-        _event_data(router_events[0], ["uint256"] * 6, "ExitSettled")
-    if (x != x_sold or eth_out != router_eth or burned != router_burned or
-            burned != q + q_bought or wizard + developer != eth_out - eth_out // 2 or
-            wizard != (eth_out - eth_out // 2) // 2 or burned == 0):
-        raise ReportError("executor/router cash and burn values do not reconcile")
-    if (x == 0) != (eth_out == 0 and q_bought == 0):
-        raise ReportError("X sale and Q purchase disagree")
+                     _indexed_address(row["topics"][1], "final closure token") == token]
+    if len(final_markers) != 1:
+        raise ReportError("pending receipt lacks unique AllPositionsExited final marker")
     pending_logs = [row for row in exit_receipt["logs"] if
                     str(row.get("address", "")).lower() == binding.q and
                     row.get("topics", [None])[0].lower() == PENDING and
@@ -404,22 +440,72 @@ def collect_exit(rpc: watch.Rpc, binding: Bindings, token: str,
                     _indexed_address(row["topics"][1], "pending token") == token]
     if len(pending_logs) != 1 or int(_event_data(pending_logs[0], ["uint64"], "FeeOutcomePending")[0]) != int(pending["deadline"]):
         raise ReportError("exit receipt lacks matching FeeOutcomePending")
-    q_burns = [row for row in exit_receipt["logs"] if
-               str(row.get("address", "")).lower() == binding.q and
-               row.get("topics", [None])[0].lower() == TRANSFER and
-               len(row.get("topics", [])) == 3 and
-               _indexed_address(row["topics"][1], "burn from") == binding.router and
-               _indexed_address(row["topics"][2], "burn to") == ZERO]
-    if len(q_burns) != 1 or int(_event_data(q_burns[0], ["uint256"], "Q burn")[0]) != burned:
-        raise ReportError("Q burn transfer does not reconcile with settlement")
-    lots, reasons = cost_lots(rpc, binding, start, open_block, opened, safe_head, cache)
+    exit_logs = _logs(rpc, binding.executor, [POSITION_SETTLED, indexed],
+                      open_block, exit_block, safe_head, cache)
+    interim_logs = _logs(rpc, binding.executor, [FEES_SETTLED, indexed],
+                         open_block, exit_block, safe_head, cache)
+    router_logs = _logs(rpc, binding.router, [EXIT_SETTLED, indexed],
+                        open_block, exit_block, safe_head, cache)
+    if len(exit_logs) != 3:
+        raise ReportError("expected exactly three authenticated position exits")
+    if exit_logs[-1]["transactionHash"].lower() != exit_receipt["transactionHash"].lower():
+        raise ReportError("final marker is not attached to the third position exit")
+    all_settlements = sorted([*exit_logs, *interim_logs], key=watch.log_order)
+    settlement_txs = [row["transactionHash"].lower() for row in all_settlements]
+    router_txs = [row["transactionHash"].lower() for row in router_logs]
+    if (len(set(settlement_txs)) != len(all_settlements) or
+            len(set(router_txs)) != len(router_logs) or
+            set(settlement_txs) != set(router_txs)):
+        raise ReportError("settlement transactions and router payouts do not match one-to-one")
+    router_by_tx = {row["transactionHash"].lower(): row for row in router_logs}
+    interim: list[dict[str, Any]] = []
+    position_exits: list[dict[str, Any]] = []
+    settlement_burns: list[dict[str, Any]] = []
+    for settlement in all_settlements:
+        tx_hash = settlement["transactionHash"].lower()
+        receipt = _receipt(rpc, tx_hash, safe_head, cache)
+        router_event = router_by_tx[tx_hash]
+        burns = [item for item in receipt["logs"] if
+                 str(item.get("address", "")).lower() == binding.q and
+                 item.get("topics", [None])[0].lower() == TRANSFER and
+                 len(item.get("topics", [])) == 3 and
+                 _indexed_address(item["topics"][1], "Q burn source") == binding.router and
+                 _indexed_address(item["topics"][2], "Q burn recipient") == ZERO]
+        if len(burns) != 1:
+            raise ReportError("settlement receipt lacks unique Q burn")
+        sx, sq, eth_out, burned = _event_data(settlement, ["uint256"] * 4,
+                                               "executor settlement")
+        rx, reth, q_bought, rburned, wizard, developer = _event_data(
+            router_event, ["uint256"] * 6, "ExitSettled")
+        if (sx != rx or eth_out != reth or burned != rburned or
+                burned != sq + q_bought or
+                wizard + developer != eth_out - eth_out // 2 or
+                wizard != (eth_out - eth_out // 2) // 2 or burned == 0 or
+                int(_event_data(burns[0], ["uint256"], "Q burn")[0]) != burned):
+            raise ReportError("executor/router cash and burn values do not reconcile")
+        if (sx == 0) != (eth_out == 0 and q_bought == 0):
+            raise ReportError("X sale and Q purchase disagree")
+        kind = "position_exit" if settlement["topics"][0].lower() == POSITION_SETTLED else "fee_harvest"
+        record = {"txHash": tx_hash,
+                  "block": watch.quantity(settlement["blockNumber"], "settlement block"),
+                  "xSoldWei": str(sx), "ethOutWei": str(eth_out),
+                  "recipientCashEthWei": str(wizard + developer),
+                  "qBurnedWei": str(burned)}
+        if kind == "position_exit":
+            record["qPrincipalAndFeeSettledWei"] = str(sq)
+            position_exits.append(record)
+        else:
+            record["qFeeSettledWei"] = str(sq)
+            interim.append(record)
+        settlement_burns.append({"kind": kind, **record})
+    total_cash = sum(int(item["recipientCashEthWei"]) for item in settlement_burns)
+    total_burned = sum(int(item["qBurnedWei"]) for item in settlement_burns)
+    final_exit = position_exits[-1]
     # The current contracts emit no per-position gas allocation for reverted
-    # cranks, shared transfers, or acquisition lots. These receipts are known
-    # but their sum is NOT asserted complete for cash-return feedback.
+    # cranks or shared transfers. These receipts are known, not a full audit.
     known_receipts = []
     for tx_hash in {opened["transactionHash"].lower(), selected["transactionHash"].lower(),
-                    exit_receipt["transactionHash"].lower(),
-                    *(row["source"].split()[-1] for row in lots)}:
+                    *settlement_txs}:
         receipt = _receipt(rpc, tx_hash, safe_head, cache)
         tx = _tx(rpc, receipt)
         known_receipts.append({"txHash": tx_hash, "payer": str(tx["from"]).lower(),
@@ -427,7 +513,7 @@ def collect_exit(rpc: watch.Rpc, binding: Bindings, token: str,
                                "effectiveGasPriceWei": str(watch.quantity(receipt["effectiveGasPrice"], "gas price"))})
     known_receipts.sort(key=lambda row: row["txHash"])
     # Full Swap window on the *custom* pool ID, from actual open through exit.
-    pool_id = _hex(opened["topics"][2], 32, "X/Q pool ID")
+    pool_id = next(iter(pool_ids))
     swaps = _logs(rpc, POOL_MANAGER, [SWAP, pool_id], open_block, exit_block, safe_head, cache)
     q_is_0 = int(binding.q, 16) < int(token, 16)
     x_in = q_in = x_out = q_out = 0
@@ -436,26 +522,35 @@ def collect_exit(rpc: watch.Rpc, binding: Bindings, token: str,
             raise ReportError("X/Q Swap has malformed indexed fields")
         amount0, amount1, _sqrt, _liquidity, _tick, swap_fee = _event_data(
             swap, ["int128", "int128", "uint160", "uint128", "int24", "uint24"], "X/Q Swap")
-        if amount0 * amount1 >= 0 or swap_fee != open_fee:
+        if amount0 * amount1 >= 0 or swap_fee != chosen_fee:
             raise ReportError("X/Q Swap deltas or static fee are inconsistent")
         q_delta, x_delta = (amount0, amount1) if q_is_0 else (amount1, amount0)
         q_in += max(q_delta, 0)
         x_in += max(x_delta, 0)
         q_out += max(-q_delta, 0)
         x_out += max(-x_delta, 0)
-    return {"token": token, "feePips": int(open_fee), "poolId": pool_id,
+    return {"token": token, "feePips": int(chosen_fee), "poolId": pool_id,
             "openTxHash": opened["transactionHash"].lower(), "exitTxHash": exit_receipt["transactionHash"].lower(),
-            "qSpentWei": str(quote_spent), "qCostLots": lots,
-            "actualEthQCostWei": str(sum(int(row["ethCostWei"]) for row in lots)) if not reasons else None,
-            "exitEthOutWei": str(eth_out), "recipientCashEthWei": str(wizard + developer),
-            "qBurnedWei": str(burned), "xSoldWei": str(x_sold),
+            "openBlock": open_block, "exitBlock": exit_block,
+            "positionTokenIds": sorted(token_ids), "trancheCount": 3,
+            "qMintedWei": str(minted), "qUnusedBurnedAtOpenWei": str(minted - quote_spent),
+            "qSpentWei": str(quote_spent),
+            "exitEthOutWei": final_exit["ethOutWei"],
+            "exitRecipientCashEthWei": final_exit["recipientCashEthWei"],
+            "exitQBurnedWei": final_exit["qBurnedWei"],
+            "recipientCashEthWei": str(total_cash),
+            "qBurnedWei": str(total_burned),
+            "xSoldWei": str(sum(int(item["xSoldWei"]) for item in settlement_burns)),
+            "positionExits": position_exits, "interimHarvests": interim,
+            "settlementBurns": settlement_burns,
             "customPoolSwapCount": len(swaps),
             "customPoolQInWei": str(q_in), "customPoolXInWei": str(x_in),
             "customPoolQOutWei": str(q_out), "customPoolXOutWei": str(x_out),
             "knownReceipts": known_receipts,
-            "evidenceBlock": safe_head, "evidenceBlockHash": watch.block_hash(rpc, safe_head),
-            "costGaps": reasons, "gasComplete": False, "reportable": False,
-            "reportBlockedBy": [*reasons, "complete per-token strategy gas attribution unavailable"]}
+            "evidenceBlock": exit_block, "evidenceBlockHash": watch.block_hash(rpc, exit_block),
+            "gasComplete": False, "grossMarkEvidenceComplete": True,
+            "reportable": False,
+            "reportBlockedBy": ["historical size-aware Q/ETH quotes not yet attached"]}
 
 
 def _save_state(path: Path, data: dict[str, Any]) -> None:
@@ -559,8 +654,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-seconds", type=float, default=10)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
-    if not args.http_url or not args.q or not args.buyer or not args.buyer_code_hash:
-        parser.error("HTTP RPC, Q, pinned vault buyer, and its runtime code hash are required")
+    if not args.http_url or not args.q:
+        parser.error("HTTP RPC and Q address are required")
+    if bool(args.buyer) != bool(args.buyer_code_hash):
+        parser.error("buyer and buyer-code-hash must be supplied together")
     if (args.confirmations < 1 or not 1 <= args.blocks_per_cycle <= 10000 or
             not 1 <= args.max_evidence_blocks <= 500000 or not 1 <= args.max_pending <= 20 or
             args.poll_seconds <= 0):
@@ -616,7 +713,7 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("first run requires a confirmed Q deployment --start-block")
             # Completeness proof: no Q code before the claimed deployment block.
             if rpc.call("eth_getCode", [binding.q, hex(args.start_block - 1)]) != "0x":
-                raise ReportError("start block is after Q deployment; earlier Q lots may be missing")
+                raise ReportError("start block is after Q deployment; earlier mint evidence may be missing")
             state = {"version": 1, "chainId": ROBINHOOD_CHAIN_ID, "q": binding.q,
                      "buyer": binding.buyer, "buyerCodeHash": binding.buyer_code_hash,
                      "startBlock": args.start_block,

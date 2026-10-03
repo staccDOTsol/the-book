@@ -70,6 +70,10 @@ contract SeedableQuoteExitExecutor is HooklessLPExecutor {
         position.enteredBand = true;
         position.quoteSpent = 1 ether;
     }
+
+    function clearEntryForTest(address token) external {
+        positions[token].enteredBand = false;
+    }
 }
 
 contract HooklessLPQuoteExitUnitTest {
@@ -96,13 +100,14 @@ contract HooklessLPQuoteExitUnitTest {
         PositionInspector inspector = new PositionInspector(address(executor));
         address[] memory endpoints = new address[](0);
         q = new LaunchCursorToken(
-            "Q", "Q", 1_000_000_000 ether, address(factory), address(executor),
+            LaunchCursorToken.Metadata("Q", "Q", "Unit test quote", "ipfs://unit-test-q"),
+            1_000_000_000 ether,
+            address(factory), address(executor),
             address(inspector), 30, 2_000_000, 1 gwei, endpoints
         );
         executor.bindController(address(q));
         inspector.bindCursor(address(q));
         ForkMockPriceGuard guard = new ForkMockPriceGuard(address(factory), address(stateView), address(q));
-        executor.bindPriceGuard(address(guard));
         ForkMockSettlementRouter router = new ForkMockSettlementRouter(
             address(executor), address(q), address(factory), address(manager), guard.quoteEthPoolId()
         );
@@ -116,10 +121,10 @@ contract HooklessLPQuoteExitUnitTest {
         require(q.transfer(address(executor), 5 ether), "idle Q funding failed");
         require(q.transfer(address(positionManager), 1 ether), "position Q funding failed");
         vm.prank(address(q));
-        executor.configureExit(address(x), HooklessLPExecutor.ExitConfig({
-            minTokenOut: 0, minQuoteOut: 1, minEthOut: 0, minQOut: 0,
-            deadline: uint64(block.timestamp + 60)
-        }));
+        executor.configureExit(address(x), abi.encode(HooklessLPExecutor.ExitConfig({
+            tranche: 0, minTokenOut: 0, minQuoteOut: 1, minEthOut: 0, minQOut: 0,
+            deadline: uint64(block.timestamp + 60), timed: false
+        })));
     }
 
     function testQuoteExitBurnsReceiptAndPreservesIdleQ() external {
@@ -153,7 +158,7 @@ contract HooklessLPQuoteExitUnitTest {
         require(atQuoteBoundary && !atTokenBoundary && entered, "position state changed");
     }
 
-    function testQuoteExitIncludesPriorHarvestAndRoutesXFees() external {
+    function testInterimHarvestSettlesFeesWithoutClosingPosition() external {
         (SeedableQuoteExitExecutor executor, QuoteExitMockPositionManager pm, QuoteExitMockToken x, LaunchCursorToken q) =
             _setup();
         ForkMockSettlementRouter router = ForkMockSettlementRouter(executor.settlementRouter());
@@ -162,42 +167,86 @@ contract HooklessLPQuoteExitUnitTest {
         x.mint(address(pm), 3);
         pm.setReceipts(3 ether, 2);
         vm.prank(address(q));
-        executor.harvest(address(x));
-        (uint256 harvestedX, uint256 harvestedQ) = executor.harvestedAmounts(address(x));
-        require(harvestedX == 2 && harvestedQ == 3 ether, "fees not attributed");
-        require(executor.reservedHarvestedQuote() == 3 ether, "Q reservation missing");
-
-        pm.setReceipts(1 ether, 1);
-        vm.prank(address(q));
-        executor.configureExit(address(x), HooklessLPExecutor.ExitConfig({
-            minTokenOut: 0, minQuoteOut: 1, minEthOut: 1, minQOut: 1 ether,
+        executor.configureHarvest(address(x), HooklessLPExecutor.HarvestConfig({
+            minTokenFee: 1, minQuoteFee: 1 ether, minEthOut: 1, minQOut: 1 ether,
+            grossEthValue: 1 ether, estimatedGasUnits: 500_000,
             deadline: uint64(block.timestamp + 60)
         }));
+        uint256 supplyBeforeHarvest = q.totalSupply();
+        vm.prank(address(q));
+        executor.harvest(address(x));
+        require(router.lastXAmount() == 2 && router.lastQAmount() == 3 ether, "interim fees not routed");
+        require(q.totalSupply() == supplyBeforeHarvest - 4 ether, "interim Q not burned");
+        (uint256 harvestedX, uint256 harvestedQ) = executor.harvestedAmounts(address(x));
+        require(harvestedX == 0 && harvestedQ == 0, "settled fees still reserved");
+        (, , , , bool entered) = executor.inspect(address(x));
+        require(entered, "interim claim closed LP");
+
+        pm.setReceipts(1 ether, 1);
+        require(q.transfer(address(router), 1 ether), "mock quote buy refill failed");
+        vm.prank(address(q));
+        executor.configureExit(address(x), abi.encode(HooklessLPExecutor.ExitConfig({
+            tranche: 0, minTokenOut: 0, minQuoteOut: 1, minEthOut: 1, minQOut: 1 ether,
+            deadline: uint64(block.timestamp + 60), timed: false
+        })));
         uint256 supplyBefore = q.totalSupply();
         vm.prank(address(q));
         (int32 netReturnBps, bool comparable) = executor.exit(address(x));
         require(netReturnBps == 0 && !comparable, "invented ROI");
-        require(router.lastXAmount() == 3 && router.lastQAmount() == 4 ether, "wrong routed receipts");
-        require(q.totalSupply() == supplyBefore - 5 ether, "wrong total burn");
+        require(router.lastXAmount() == 1 && router.lastQAmount() == 1 ether, "wrong exit receipts");
+        require(q.totalSupply() == supplyBefore - 2 ether, "wrong exit burn");
         require(q.balanceOf(address(executor)) == 5 ether, "idle Q changed");
-        require(executor.reservedHarvestedQuote() == 0, "harvest reservation not cleared");
+        require(executor.reservedHarvestedQuote() == 0, "unexpected harvest reservation");
         (harvestedX, harvestedQ) = executor.harvestedAmounts(address(x));
         require(harvestedX == 0 && harvestedQ == 0, "harvest attribution not cleared");
         require(q.allowance(address(executor), address(router)) == 0, "Q allowance left open");
         require(x.allowance(address(executor), address(router)) == 0, "X allowance left open");
     }
 
-    function testHarvestedQCannotBeRescuedAsIdleFunding() external {
+    function testInterimQOnlyHarvestBurnsFeesAndPreservesIdleQ() external {
         (SeedableQuoteExitExecutor executor, QuoteExitMockPositionManager pm, QuoteExitMockToken x, LaunchCursorToken q) =
             _setup();
         require(q.transfer(address(pm), 3 ether), "fee funding failed");
         pm.setReceipts(3 ether, 0);
         vm.prank(address(q));
+        executor.configureHarvest(address(x), HooklessLPExecutor.HarvestConfig({
+            minTokenFee: 0, minQuoteFee: 1 ether, minEthOut: 0, minQOut: 0,
+            grossEthValue: 1 ether, estimatedGasUnits: 400_000,
+            deadline: uint64(block.timestamp + 60)
+        }));
+        uint256 supplyBefore = q.totalSupply();
+        vm.prank(address(q));
         executor.harvest(address(x));
-        require(q.balanceOf(address(executor)) == 8 ether, "wrong vault balance");
+        require(q.balanceOf(address(executor)) == 5 ether, "idle Q changed");
+        require(q.totalSupply() == supplyBefore - 3 ether, "Q fees were not burned");
         vm.prank(address(q));
         vm.expectRevert(HooklessLPExecutor.UnsettledHarvest.selector);
         executor.rescueHeldERC20(address(q), 6 ether, address(this));
-        require(q.balanceOf(address(executor)) == 8 ether, "reserved Q was rescued");
+        require(q.balanceOf(address(executor)) == 5 ether, "idle Q was overdrawn");
+    }
+
+    function testTimedExitWithdrawsUntouchedInteriorPosition() external {
+        (SeedableQuoteExitExecutor executor, QuoteExitMockPositionManager pm, QuoteExitMockToken x, LaunchCursorToken q) =
+            _setup();
+        QuoteExitMockStateView view_ = QuoteExitMockStateView(address(executor.stateView()));
+        view_.setPrice(HooklessTickMath.getSqrtPriceAtTick(0));
+        executor.clearEntryForTest(address(x));
+        require(q.transfer(address(pm), 1 ether), "Q receipt funding failed");
+        require(q.transfer(executor.settlementRouter(), 1 ether), "mock buy funding failed");
+        x.mint(address(pm), 1 ether);
+        pm.setReceipts(2 ether, 1 ether);
+
+        vm.prank(address(q));
+        executor.configureExit(address(x), abi.encode(HooklessLPExecutor.ExitConfig({
+            tranche: 0, minTokenOut: 1, minQuoteOut: 1,
+            minEthOut: 1, minQOut: 1 ether,
+            deadline: uint64(block.timestamp + 60), timed: true
+        })));
+        uint256 supplyBefore = q.totalSupply();
+        vm.prank(address(q));
+        executor.exit(address(x));
+        require(executor.activePositionCount(address(x)) == 0, "timed LP stayed active");
+        require(q.totalSupply() == supplyBefore - 3 ether, "Q receipts not burned");
+        require(x.balanceOf(address(executor)) == 0, "X not settled");
     }
 }

@@ -18,6 +18,7 @@ interface IBootstrapForkVm {
 /// @notice Real Robinhood fork exercise of Uniswap's current existing-token
 /// Instant Launch path. Forge forks state locally; no transaction is sent.
 contract PonsBootstrapForkTest {
+    event log_named_uint(string key, uint256 val);
     IBootstrapForkVm private constant vm =
         IBootstrapForkVm(address(uint160(uint256(keccak256("hevm cheat code")))));
     uint256 private constant SUPPLY = 1_000_000_000 ether;
@@ -54,7 +55,8 @@ contract PonsBootstrapForkTest {
         endpoints[2] = strategy;
         endpoints[3] = POSITION_MANAGER;
         LaunchCursorToken q = new LaunchCursorToken(
-            name, symbol, SUPPLY, PONS_FACTORY, address(executor), address(inspector),
+            LaunchCursorToken.Metadata(name, symbol, "Fork launch quote", "ipfs://fork-launch-q"), SUPPLY,
+            PONS_FACTORY, address(executor), address(inspector),
             30, 3_000_000, 1 gwei, endpoints
         );
         executor.bindController(address(q));
@@ -83,14 +85,12 @@ contract PonsBootstrapForkTest {
         vm.setEnv("PONS_PRICE_CONFIGURATOR", vm.toString(address(0xA11CE)));
         vm.setEnv("PONS_EXIT_CONFIGURATOR", vm.toString(address(0xE417)));
         vm.setEnv("PONS_SPOT_MAX_DEVIATION_BPS", "1000");
-        vm.setEnv("PONS_DEPTH_SAFETY_BPS", "1500");
-        (address spot, address router, address depth) = bootstrap.deployAfterLaunch();
-        require(executor.priceGuard() == spot && executor.settlementRouter() == router &&
-            executor.depthGuard() == depth, "post-launch bindings wrong");
-        require(!q.automaticEnabled(), "cursor enabled before vault funding");
+        (address spot, address router) = bootstrap.deployAfterLaunch();
+        require(spot.code.length != 0 && executor.settlementRouter() == router,
+            "post-launch bindings wrong");
+        require(!q.automaticEnabled(), "cursor enabled before activation");
         require(q.priceConfigurator() == address(0xA11CE) &&
             q.exitConfigurator() == address(0xE417), "keeper roles were not isolated");
-        vm.setEnv("PONS_MIN_IDLE_Q_WEI", "1");
         bootstrap.activate();
         require(q.automaticEnabled(), "activation failed");
     }
@@ -108,9 +108,13 @@ contract PonsBootstrapForkTest {
             bootstrap.preflightVaultBuy();
         require(plannedBuyer == buyer && ethIn == 0.01 ether && quoteQ >= minQOut && minQOut > 0,
             "bounded vault buy plan invalid");
+        emit log_named_uint("Q from first 0.01 ETH buy", quoteQ);
+        emit log_named_uint("Q first-buy average ETH wei per whole Q", ethIn * 1 ether / quoteQ);
         (bool bought,) = buyer.call{value: ethIn}(buyCalldata);
         require(bought && q.balanceOf(address(executor)) > 0, "first vault Q buy failed");
         require(IBootstrapStateView(STATE_VIEW).getLiquidity(poolId) > 0, "Q/ETH not active after buy");
+        (uint160 afterBuySqrt,,,) = IBootstrapStateView(STATE_VIEW).getSlot0(poolId);
+        emit log_named_uint("Q/ETH sqrtPriceX96 after first buy", afterBuySqrt);
     }
 
     function _launchWithPreflight(

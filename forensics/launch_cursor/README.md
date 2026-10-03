@@ -1,152 +1,163 @@
 # Hookless Pons X/Q prototype
 
-This directory contains an **undeployed** fixed-supply `Q` ERC-20, a LIFO
-launch cursor, and a vault for independent Uniswap v4 `X/Q` pools. `X` is a
-Pons launch token. Each new pool has no hook and receives one fixed fee chosen
-from 5–50%; the existing Pools.xyz `Q/ETH` launch pool has separate terms.
-The current code opens **one Q-only LP position** per eligible launch, then
-withdraws at the first *observed* one-sided boundary after range entry.
+This directory contains an **undeployed** custom `Q` ERC-20 and a launch cursor
+for ETH-paired Pons tokens `X`. Q can be launched through Uniswap's
+existing-token LiquidityLauncher route into a separate, locked Q/ETH pool.
+For each eligible Pons X, the cursor creates **one hookless Uniswap v4 X/Q
+pool with three Q-only LP positions**. One static pool fee is selected from
+5% through 50% and remains fixed for that X. No Q, executor, inspector, or
+router from this plan has been deployed, and no live transaction was sent
+while building this prototype.
 
-## Components and flow
+## Opening a pool
 
-1. [pons_launch_watcher.py](pons_launch_watcher.py) consumes confirmed factory
-   `TokenLaunched` logs. WebSocket notices wake it, while HTTP log backfill
-   and a durable cursor cover disconnections. Its only contract write is the
-   owner-signed `LaunchCursorToken.enqueue(X)`, which verifies the factory
-   record and puts `X` on a LIFO stack.
-2. [pons_price_keeper.py](pons_price_keeper.py) checks a recent pinned-block
-   executable X-to-ETH route, the Q/ETH route, Q budget, tick ordering, and
-   the bound onchain guards before signing `Q.configureOpen(X, config)`. Its
-   default budget is 25% of **idle vault Q**, after reserved harvested Q.
-   An unconfigured launch remains queued.
-3. [LaunchCursorToken.sol](LaunchCursorToken.sol) schedules configured opens,
-   ready exits, and optional fee harvests. An eligible direct EOA `Q`
-   transfer can attempt one stage when it supplies enough gas; anyone can
-   call `processNext()` if transfers are quiet. The transaction caller pays
-   gas. `Q` excludes internal settlement transfers from recursive cursor
-   work. [StaticNextPoolFee.sol](StaticNextPoolFee.sol) fixes one fee per `X`
-   across retries. Its 46 fee arms are **not calibrated**: until comparable
-   net outcomes exist, assignments remain exploratory.
-4. [HooklessLPExecutor.sol](HooklessLPExecutor.sol) atomically initializes an
-   empty zero-hook pool and mints one Q-only position. It binds both
-   [OpenPriceGuard.sol](OpenPriceGuard.sol), a same-transaction marginal spot
-   sanity check, and [OpenExecutableDepthGuard.sol](OpenExecutableDepthGuard.sol),
-   a same-transaction check of the full LP band’s maximum possible X
-   inventory against executable Pons X/ETH and Q/ETH routes. The selected
-   pool fee never changes after creation. Both guards must be bound before
-   opening. A stale quote, insufficient depth, wrong phase, bad tick band,
-   or an already initialized PoolKey rejects the open.
-5. [PositionInspector.sol](PositionInspector.sol) reports range entry and
-   one-sided boundary observations. [pons_exit_keeper.py](pons_exit_keeper.py)
-   tracks open positions, checks `inspect` offchain before paying for `poke`,
-   simulates the LP withdrawal, obtains size-aware sale and Q-buy bounds, and
-   submits `Q.configureExit` followed by `Q.processNext`. A swept Pons
-   phase waits and retries if recovered `X` needs to be sold; an all-Q exit
-   can settle without that sale. Polling can miss a transient touch and reversal:
-   the enforceable trigger is the **first observed** boundary, with no timer.
-6. `executor.exit` burns the active LP, includes prior collected fees, and
-   calls [ExitSettlementRouter.sol](ExitSettlementRouter.sol). The router
-   sells recovered `X` through the active Pons curve or graduated v4 pool,
-   spends half of that ETH buying `Q` through Q/ETH, burns bought and
-   recovered `Q`, wraps half the remaining ETH for the Squarefun wizard
-   fanout, and sends the other half as native ETH to the developer. Positive
-   minimum outputs and a short deadline bound the swaps. An all-Q exit burns
-   Q without a sale or payout.
+1. [pons_launch_watcher.py](pons_launch_watcher.py) indexes confirmed Pons V2
+   `TokenLaunched` logs. Its only contract write is owner-signed
+   `Q.enqueue(X)`. Q verifies the factory record and places the launch on its
+   LIFO entry stack.
+2. [pons_price_keeper.py](pons_price_keeper.py) authenticates the ETH-paired
+   factory record and curve, reads Q and X supply at one pinned block, and
+   sends a short-lived `Q.configureOpen(X, bytes)` plan. It uses the curve's
+   phantom quote reserve and graduation threshold to set three nested Q/X
+   ranges. See [the exact formula and tick math](price_keeper.md).
+3. [LaunchCursorToken.sol](LaunchCursorToken.sol) selects one of 46 static fee
+   arms (5%, 6%, …, 50%) and, in one atomic open attempt, mints three new Q
+   tranches. Each mint is **1% of Q's then-current total supply**, so the
+   amounts compound sequentially. It passes the three amounts to
+   [HooklessLPExecutor.sol](HooklessLPExecutor.sol), which initializes one
+   zero-hook X/Q pool and mints three Q-only NFTs. It burns unused newly
+   minted Q before the call completes. A failed open rolls the issuance back.
+4. A direct EOA Q transfer with sufficient gas may trigger one cursor step.
+   `Q.processNext()` is the permissionless fallback. The caller pays that
+   transaction's gas; internal settlement transfers do not recursively run
+   the cursor. An unconfigured or failed launch remains retryable.
 
-The watcher, price keeper, and exit keeper have separate signing accounts,
-nonce streams, and durable signed transaction journals.
-[pons_keeper_supervisor.py](pons_keeper_supervisor.py) runs their live `--once`
-cycles in independent process slots and services exits first, so a slow or
-unresolved price transaction cannot delay exit inspection. Each signer
-recovers only its own pending transaction. [exit_keeper.md](exit_keeper.md) documents startup and
-recovery. No live trading daemon, deployment, Q launch, LP, or trade is running from
-this prototype.
+The scale is deliberately self-defined: `p0 = first 1% Q mint / X totalSupply`
+in raw token units. The Pons curve contributes the dimensionless multiplier
+`R = ((phantom + graduationThreshold) / phantom)²`. The three bands span
+`p0 → R·p0`, `p0 → 2R·p0`, and `p0 → 10R·p0`. The new pool starts beyond
+the widest band so all three NFTs initially hold Q only, for either token
+address ordering. **p0 is not a conversion of the Pons ETH price into Q,
+a fair-market-value estimate, or evidence of profit.** Opening has no
+X/ETH or Q/ETH executable-price gate. The executor no longer binds an
+`OpenPriceGuard` or `OpenExecutableDepthGuard`; those contracts do not veto
+pool creation. The executor still rejects invalid ranges, an initialized
+PoolKey, an expired plan, or a tranche spend cap above its actual new mint.
+A third party could initialize the chosen PoolKey before the executor.
 
-The staged [Robinhood bootstrap](bootstrap.md) verifies the current Uniswap
-existing-token launch path and returns atomic launch calldata. The
-[fee-arm outcome ledger](fee_outcome_ledger.md) reconciles confirmed receipt
-inputs and separates actual ETH cash from hypothetical value of burned Q. The
-[canonical fee-outcome collector](pons_fee_reporter.md) gathers receipt-backed
-evidence without submitting an onchain score; it currently cannot prove
-complete strategy-paid gas for each position.
+The [fee and band-edge arbitrage scenario](fee_arb_scenario.py) is **under
+test, not implemented in the strategy**. It explores conditional continuous
+LP math and can reconcile caller-supplied same-block route quotes. It does
+not authenticate those quotes, choose live trade sizes, place an arbitrage
+trade, or change the keeper's three fixed band formulas. A 5–50% fee alone
+does not establish profitable entry or prevent arbitrage against a
+mispriced X/Q pool.
 
-## Local status page
+## Observation, exits, and interim fees
 
-Run `python3 forensics/launch_cursor/q_status_dashboard.py` from the repository
-and open `http://127.0.0.1:8767`. This separate, GET-only page reads the
-watcher, price, exit, and supervisor journals directly from ignored `.local`.
-It cannot start a keeper, call an RPC, or submit a transaction. It shows
-cursor blocks, queue or position counts, pending-transaction **flags**, and
-the supervisor's latest heartbeat and separate last successful exit and price
-cycles. It never
-returns signed transaction bodies or keys. The supervisor writes its small,
-mode-`0600` status file atomically as
-`.local/pons-keeper-supervisor-status.json`; its error text comes from a fixed
-safe vocabulary.
+[PositionInspector.sol](PositionInspector.sol) reads all three live NFTs.
+It records a tranche's entry when the price is observed inside its range or
+has crossed completely from the opening Q-only side to the all-X side. Once
+entered, the first **observed** one-sided boundary can queue an exit. A
+hookless observer can miss a touch and reversal between inspections; it
+cannot promise the first intrablock touch. At 120 minutes after opening,
+`Q.requestWindDown(X)` can queue a timed exit even for an untouched Q-only
+position. The cursor requeues timed exits until all three tranches close.
 
-Without journals, the page shows unconfigured/undeployed. Saved cursors alone
-only show previous activity. A “live supervisor reported” label requires a
-fresh supervisor heartbeat, recent successful cycles for both exit and price,
-and matching Q/chain/guard bindings in all three component journals. A recovery cycle may
-complete only the keeper that owns a pending signed transaction. The page does not
-independently verify deployment or onchain liveness.
+[pons_exit_keeper.py](pons_exit_keeper.py) tracks open NFTs separately. It
+simulates the selected tranche's real PositionManager withdrawal with
+`eth_call`, quotes a size-aware X→ETH sale through the active Pons curve or
+graduated v4 pool, then quotes the ETH→Q purchase. It signs a bounded
+`Q.configureExit(X, bytes)` and drives the inspector and scheduler.
+`executor.exit` burns **one** entered tranche and settles its receipts plus
+previously harvested balances. A swept Pons phase waits when X must be sold.
+The other NFTs remain active and can later exit at their own observed
+boundaries or the 120-minute winddown. Only the **third and final** exit marks X fully Exited and opens
+fee-outcome feedback. An all-Q exit can burn Q without an X sale or ETH
+payout. See [exit keeper details](exit_keeper.md).
 
-## Bootstrap and trust boundary
+[ExitSettlementRouter.sol](ExitSettlementRouter.sol) sells recovered X for
+ETH, spends half that ETH buying Q in the Q/ETH pool, and burns bought Q plus
+Q recovered from the LP. It wraps half the remaining ETH as WETH for the
+Squarefun wizard fanout and sends the other half as native ETH to the
+configured developer. Positive output minima and a short deadline bound the
+swaps. The router is mandatory for normal exits; the executor has **no
+price-guard or depth-guard binding**. A separate `OpenPriceGuard` can still
+supply the offchain exit and harvest keepers with Q/ETH quote-pool metadata.
+The onchain router checks its real Q/ETH buy path when bound.
 
-Deploy the executor with the Robinhood PoolManager, PositionManager,
-StateView, and Permit2. Deploy the inspector, then deploy exactly 1 billion
-18-decimal `Q` units with that executor and inspector. Bind Q as executor
-controller and as inspector cursor. After the actual `Q/ETH` launch pool
-exists, deploy the spot guard and settlement router with its real fee and
-tick spacing, then deploy the executable depth guard using the official
-Robinhood v4 Quoter. Bind the spot guard, settlement router, and depth guard
-to the executor. The contracts check reciprocal identities; deployment
-scripts still need to verify all addresses and the intended developer and
-Squarefun fanout recipients before funding. These steps do **not** launch Q.
+Interim fee harvesting is implemented. [pons_harvest_keeper.py](pons_harvest_keeper.py)
+simulates fee collection across active NFTs, quotes sale or burn value,
+requires a margin over whole-cycle gas, and signs `Q.configureHarvest` plus
+an inspector report. `executor.harvest` collects accrued X/Q fees without
+reducing LP principal. It sells X fees when bounded, burns Q fees, and keeps
+unsellable X reserved for a later harvest or exit. Q-only burns have an
+estimated ETH value but produce no ETH reimbursement to the signer. Exits
+have scheduler priority over harvests. See [harvest keeper details](harvest_keeper.md).
 
-The underlying Pools.xyz LiquidityLauncher supports an existing custom token
-through atomic `depositToken` plus `distributeToken`; the ordinary Pools.xyz
-UI does not expose this route. Its launch locks the initial Q supply in the
-Q/ETH position. The executor must acquire valuable Q separately for X/Q
-pools. A transfer-triggered cursor does not make LP inventory or gas free.
+## Fee feedback and operators
 
-The price configurator is trusted to select admissible ETH-paired Pons
-launches and a fair Q-only band. The separate exit configurator signs bounded
-withdrawal and settlement plans. The owner, price configurator, and exit
-configurator must use distinct accounts before automatic processing is
-activated. The onchain depth guard checks liquidity
-**at open**, but no spot/depth check guarantees future volume, fee income,
-or recoverable ETH at exit. A third party can initialize a selected pool
-first. Non-ETH Pons pairs are unsupported by these routes. Interim LP fee
-claims are disabled because `previewHarvest` does not provide a reliable
-executable ETH valuation; the final burn collects accrued fees.
+[StaticNextPoolFee.sol](StaticNextPoolFee.sol) freezes the selected fee per X
+across open retries. It explores 15% of new selections and otherwise uses
+its recorded arm scores. It is **not calibrated to profitability**. The
+[receipt collector](pons_fee_reporter.md) and
+[feedback keeper](pons_fee_feedback_keeper.py) reconcile one pool's three
+minted-Q tranches, three independent exits, interim harvests, burns,
+recipient ETH/WETH, and observed X/Q swaps. After the final exit, the keeper
+can report one gross ETH-equivalent mark backed by canonical receipts and
+historical full-size Q/ETH quotes. That mark excludes complete gas
+attribution and includes hypothetical Q sales; it is not realized profit.
+An unvalued final exit remains reportable for seven days, then can be
+censored. Open, idle, and censored arms retain the policy's provisional
+−5,000 bps selection penalty. See the [outcome ledger](fee_outcome_ledger.md).
 
-Successful exits with no onchain-comparable return now open a seven-day
-evidence window. The trusted price configurator can submit one receipt-backed
-cash outcome, identified by an evidence hash, or censor the exit after the
-window if its Q acquisition cost and attributable gas remain unprovable.
-No authenticated automatic outcome reporter or real Q cost lots exist yet,
-so the 5–50% selector still has **no profitability calibration**. Burned Q is
-a separate noncash outcome. Owner emergency unwind
-and asset rescue remain recovery paths outside normal burn and payout policy.
-Do not fund the prototype with live assets until deployment, exact recipient
-binding, end-to-end execution, and outcome accounting are verified.
+The owner watcher, price/feedback keeper, and exit/harvest keeper use **three
+distinct signing accounts and nonce streams**. Feedback shares the price
+signer lane; harvest shares the exit signer lane. Each lane has a private
+`.local` journal and lock for exact signed-transaction recovery.
+[pons_keeper_supervisor.py](pons_keeper_supervisor.py) runs bounded cycles,
+prioritizes exits, and reports all four keepers. It does not remove the need
+to inspect onchain deployment, recipient addresses, or gas funding.
 
-## Verification
+## Bootstrap and local status
 
-Solc 0.8.26 with optimization and 200 runs produced a 24,048-byte executor
-runtime (528 bytes below EIP-170), a 5,080-byte depth guard, and a
-21,776-byte Q runtime (2,800 bytes below EIP-170). Local
-tests cover LIFO scheduling, guarded entry, boundary
-readiness, settlement accounting, and failure paths. Read-only Robinhood
-fork tests cover real v4 mint and burn in both token-address orderings,
-active-curve and graduated Pons sales, Q/ETH buys, the integrated exit route,
-and the same-transaction depth guard. [HooklessFullCycleFork.t.sol](HooklessFullCycleFork.t.sol)
-combines a real X/Q LP mint, a swap through its range, a real NFT burn, and
-the Pons sale/Q buy/burn/payout route. Its complete exit used 1,002,400 gas,
-below the 3 million cursor cap. Synthetic Q/ETH liquidity is used because Q
-has not been launched. Tests do not broadcast a transaction or establish
-profitability.
+The [staged Robinhood bootstrap](bootstrap.md) pins the current Uniswap
+LiquidityLauncher existing-token route and checks the canonical v4, Pons,
+Permit2, and launch-strategy addresses. Its launch preflight returns calldata
+for atomic `depositToken(Q)` plus `distributeToken(Q)` in one launcher
+multicall. The locked Q/ETH launch holds Q's initial 1-billion-token supply.
+A bounded owner ETH→Q buy may be needed to bring that pool into active
+liquidity for later cashouts, but **executor Q bought from the market is not
+the source of X/Q opening inventory**. The three new 1% mints fund that
+inventory. Post-launch deployment binds the settlement router, its recipient
+and child adapters, and distinct configurator roles; it does not bind spot
+or executable-depth guards to the executor. Nothing in bootstrap broadcasts
+a transaction without a separately reviewed external signer action.
 
-For discovery cadence and the economic limits, see
-[the strategy record](../record/160-pons-every-launch-pool-plan.md).
+The GET-only [local status page](q_status_dashboard.py) serves
+`http://127.0.0.1:8767`. It filters watcher, price, exit, and supervisor
+journals and never reads keys, starts keepers, calls an RPC, or submits a
+transaction. A recent supervisor heartbeat and successful price/exit cycles
+can earn a **local** `live_reported` label. It checks Q and chain agreement,
+expects the new price journal's guard to be zero, and allows the separate
+exit journal's nonzero quote guard. It does not independently verify
+contract deployment or onchain liveness.
+
+## Verification and limits
+
+With Solc 0.8.35, via-IR, and optimizer runs 1, the executor runtime is
+**24,031 bytes** (545 below EIP-170) and Q's runtime is **23,161 bytes**.
+Robinhood fork tests exercise a three-position mint and abort, and a
+three-tranche full cycle through real v4 LP mint/burn and Pons/router
+settlement with synthetic Q/ETH liquidity. A separate fork test exercises
+the 120-minute winddown of three untouched Q-only NFTs.
+In the full-cycle fork test, the three `Q.processNext()` exits used
+**967,420**, **928,079**, and **964,981** gas respectively. There is no
+current isolated measured gas figure for the three-position open; do not use
+an older one-position gas result for it. These tests establish transaction
+mechanics, not Q demand, fair X/Q pricing, fee income, or a positive
+cash return. No live transaction was broadcast.
+
+For historical launch cadence and earlier strategy assumptions, see
+[the strategy record](../record/160-pons-every-launch-pool-plan.md); its
+one-position and purchased-Q discussion predates this three-mint design.

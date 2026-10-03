@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
@@ -75,6 +77,10 @@ class SupervisorTests(unittest.TestCase):
                                       Path("price.json"), 1)
         exit_keeper = supervisor.KeeperSpec("exit", Path("exit.py"),
                                             Path("exit.json"), 1)
+        feedback = supervisor.KeeperSpec("feedback", Path("feedback.py"),
+                                         Path("feedback.json"), 1)
+        harvest = supervisor.KeeperSpec("harvest", Path("harvest.py"),
+                                        Path("exit.json"), 1)
         with patch.dict(supervisor.os.environ, {
                 "PONS_OWNER_PRIVATE_KEY": "owner-fixture",
                 "PONS_PRICE_CONFIGURATOR_PRIVATE_KEY": "config-fixture",
@@ -83,6 +89,8 @@ class SupervisorTests(unittest.TestCase):
             watcher_env = supervisor.child_env(watcher)
             price_env = supervisor.child_env(price)
             exit_env = supervisor.child_env(exit_keeper)
+            feedback_env = supervisor.child_env(feedback)
+            harvest_env = supervisor.child_env(harvest)
         self.assertEqual(watcher_env["PONS_OWNER_PRIVATE_KEY"], "owner-fixture")
         self.assertNotIn("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY", watcher_env)
         self.assertNotIn("PONS_EXIT_CONFIGURATOR_PRIVATE_KEY", watcher_env)
@@ -90,9 +98,41 @@ class SupervisorTests(unittest.TestCase):
         self.assertNotIn("PONS_EXIT_CONFIGURATOR_PRIVATE_KEY", price_env)
         self.assertEqual(exit_env["PONS_EXIT_CONFIGURATOR_PRIVATE_KEY"], "exit-fixture")
         self.assertNotIn("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY", exit_env)
-        for env in (price_env, exit_env):
+        self.assertEqual(feedback_env["PONS_PRICE_CONFIGURATOR_PRIVATE_KEY"], "config-fixture")
+        self.assertNotIn("PONS_EXIT_CONFIGURATOR_PRIVATE_KEY", feedback_env)
+        self.assertEqual(harvest_env["PONS_EXIT_CONFIGURATOR_PRIVATE_KEY"], "exit-fixture")
+        self.assertNotIn("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY", harvest_env)
+        for env in (price_env, exit_env, feedback_env, harvest_env):
             self.assertNotIn("PONS_OWNER_PRIVATE_KEY", env)
             self.assertEqual(env["PONS_HTTP_RPC_URL"], "https://rpc.example")
+
+    def test_private_local_rpc_env_loads_without_overriding_process_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pons-rpc.env"
+            path.write_text("PONS_HTTP_RPC_URL=https://local.example\n"
+                            "PONS_WS_RPC_URL=wss://local.example\nPONS_CHAIN_ID=4663\n")
+            os.chmod(path, 0o600)
+            with patch.dict(supervisor.os.environ,
+                            {"PONS_HTTP_RPC_URL": "https://process.example"}, clear=True):
+                supervisor.load_local_rpc_env(path)
+                self.assertEqual(supervisor.os.environ["PONS_HTTP_RPC_URL"],
+                                 "https://process.example")
+                self.assertEqual(supervisor.os.environ["PONS_WS_RPC_URL"],
+                                 "wss://local.example")
+                self.assertEqual(supervisor.os.environ["PONS_CHAIN_ID"], "4663")
+
+    def test_loose_or_symlinked_rpc_env_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pons-rpc.env"
+            path.write_text("PONS_CHAIN_ID=4663\n")
+            os.chmod(path, 0o644)
+            with self.assertRaisesRegex(supervisor.SupervisorError, "private regular file"):
+                supervisor.load_local_rpc_env(path)
+            os.chmod(path, 0o600)
+            link = Path(tmp) / "linked.env"
+            link.symlink_to(path)
+            with self.assertRaisesRegex(supervisor.SupervisorError, "private regular file"):
+                supervisor.load_local_rpc_env(link)
 
     def test_live_signers_must_be_three_distinct_accounts(self):
         keys = {

@@ -107,9 +107,10 @@ contract OpenExecutableDepthGuardForkTest {
         PositionInspector inspector = new PositionInspector(address(s.executor));
         address[] memory endpoints = new address[](0);
         s.q = new LaunchCursorToken(
-            "Depth Test Q", "Q", 1_000_000_000 ether,
+            LaunchCursorToken.Metadata("Depth Test Q", "Q", "Depth test quote", "ipfs://depth-test-q"),
+            1_000_000_000 ether,
             FACTORY, address(s.executor), address(inspector),
-            30, 3_000_000, 1 gwei, endpoints
+            30, 9_000_000, 1 gwei, endpoints
         );
         s.executor.bindController(address(s.q));
         inspector.bindCursor(address(s.q));
@@ -118,7 +119,6 @@ contract OpenExecutableDepthGuardForkTest {
         vm.deal(address(s.seeder), 100 ether);
         s.seeder.seed();
         s.spot = new OpenPriceGuard(FACTORY, STATE_VIEW, address(s.q), 2_500, 25, 1_000);
-        s.executor.bindPriceGuard(address(s.spot));
         ExitSettlementRouter router = new ExitSettlementRouter(
             address(s.executor), address(s.q),
             address(new ExitRouterForkWETH()), address(new ExitRouterForkFanout()),
@@ -128,7 +128,6 @@ contract OpenExecutableDepthGuardForkTest {
         s.depth = new OpenExecutableDepthGuard(
             address(s.executor), address(s.spot), address(router), QUOTER, 1_500
         );
-        s.executor.bindDepthGuard(address(s.depth));
         require(s.q.transfer(address(s.executor), 10 ether), "vault Q funding");
     }
 
@@ -175,8 +174,9 @@ contract OpenExecutableDepthGuardForkTest {
         require(liquidity > 0 && liquidity <= type(uint128).max, "invalid test liquidity");
         c = ILaunchCursorConfigurator.OpenConfig({
             startingSqrtPriceX96: s.spot.referenceSqrtPriceX96(token),
-            liquidity: uint128(liquidity), maxQuoteIn: uint128(targetQ),
-            tickSpacing: 60, tickLower: lower, tickUpper: upper,
+            liquidity: [uint128(liquidity), uint128(liquidity), uint128(liquidity)],
+            maxQuoteIn: [uint128(targetQ), uint128(targetQ), uint128(targetQ)],
+            tickSpacing: 60, tickLower: [lower, lower, lower], tickUpper: [upper, upper, upper],
             deadline: uint64(block.timestamp + 120)
         });
     }
@@ -186,38 +186,41 @@ contract OpenExecutableDepthGuardForkTest {
         ILaunchCursorConfigurator.OpenConfig memory c = _config(s, ACTIVE_X);
         vm.prank(address(s.executor));
         (uint256 maxX, uint256 qOut, uint256 safeQ, uint256 requiredQ) =
-            s.depth.validate(ACTIVE_X, c.liquidity, c.tickLower, c.tickUpper);
+            s.depth.validate(ACTIVE_X, c.liquidity[0], c.tickLower[0], c.tickUpper[0]);
         require(maxX != 0 && qOut != 0 && safeQ >= requiredQ, "full-X quote failed");
         s.q.enqueue(ACTIVE_X);
-        s.q.configureOpen(ACTIVE_X, c);
+        s.q.configureOpen(ACTIVE_X, abi.encode(c));
         uint256 gasBefore = gasleft();
         (bool attempted, bool succeeded) = s.q.processNext();
         uint256 gasUsed = gasBefore - gasleft();
         emit log_named_uint("full real-Quoter processNext gas", gasUsed);
         require(attempted && succeeded, "real Quoter open failed");
-        require(gasUsed < 3_000_000, "cursor gas cap exceeded");
+        require(gasUsed < 9_000_000, "cursor gas cap exceeded");
         (,, bool atQuoteBoundary,,) = s.executor.inspect(ACTIVE_X);
         require(atQuoteBoundary, "not Q-only");
     }
 
-    function testRemovingQuoteDepthWithoutSpotMoveBlocksOpen() external {
+    function testRemovingQuoteDepthDoesNotGateStaticOpen() external {
         Setup memory s = _setup();
         ILaunchCursorConfigurator.OpenConfig memory c = _config(s, ACTIVE_X);
         vm.prank(address(s.executor));
-        s.depth.validate(ACTIVE_X, c.liquidity, c.tickLower, c.tickUpper);
+        s.depth.validate(ACTIVE_X, c.liquidity[0], c.tickLower[0], c.tickUpper[0]);
         uint160 spotBefore = s.spot.referenceSqrtPriceX96(ACTIVE_X);
         s.seeder.shrink();
         require(s.spot.referenceSqrtPriceX96(ACTIVE_X) == spotBefore, "spot changed");
         s.spot.validate(ACTIVE_X, c.startingSqrtPriceX96);
+        bool depthRejected;
+        vm.prank(address(s.executor));
+        try s.depth.validate(ACTIVE_X, c.liquidity[0], c.tickLower[0], c.tickUpper[0]) {
+            depthRejected = false;
+        } catch {
+            depthRejected = true;
+        }
+        require(depthRejected, "thin depth was not detected");
         s.q.enqueue(ACTIVE_X);
-        s.q.configureOpen(ACTIVE_X, c);
+        s.q.configureOpen(ACTIVE_X, abi.encode(c));
         (bool attempted, bool succeeded) = s.q.processNext();
-        require(attempted && !succeeded, "thin depth opened");
-        bool opened;
-        try s.executor.inspect(ACTIVE_X) returns (uint160, bool, bool, bool, bool) {
-            opened = true;
-        } catch {}
-        require(!opened, "position was minted");
+        require(attempted && succeeded, "static open failed when quote depth shrank");
     }
 
     function testGraduatedPonsQuoterAllowsOpenUnderCursorGasCap() external {
@@ -225,15 +228,15 @@ contract OpenExecutableDepthGuardForkTest {
         ILaunchCursorConfigurator.OpenConfig memory c = _config(s, GRADUATED_X);
         vm.prank(address(s.executor));
         (uint256 maxX, uint256 qOut, uint256 safeQ, uint256 requiredQ) =
-            s.depth.validate(GRADUATED_X, c.liquidity, c.tickLower, c.tickUpper);
+            s.depth.validate(GRADUATED_X, c.liquidity[0], c.tickLower[0], c.tickUpper[0]);
         require(maxX != 0 && qOut != 0 && safeQ >= requiredQ, "graduated quote failed");
         s.q.enqueue(GRADUATED_X);
-        s.q.configureOpen(GRADUATED_X, c);
+        s.q.configureOpen(GRADUATED_X, abi.encode(c));
         uint256 gasBefore = gasleft();
         (bool attempted, bool succeeded) = s.q.processNext();
         uint256 gasUsed = gasBefore - gasleft();
         emit log_named_uint("graduated real-Quoter processNext gas", gasUsed);
         require(attempted && succeeded, "graduated open failed");
-        require(gasUsed < 3_000_000, "cursor gas cap exceeded");
+        require(gasUsed < 9_000_000, "cursor gas cap exceeded");
     }
 }

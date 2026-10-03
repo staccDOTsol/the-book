@@ -42,6 +42,7 @@ interface IHooklessCursorQ {
     function executor() external view returns (address);
     function ponsFactory() external view returns (address);
     function totalSupply() external view returns (uint256);
+    function burn(uint256 amount) external;
 }
 
 interface IHooklessPriceGuard {
@@ -136,11 +137,9 @@ library HooklessTickMath {
     }
 }
 
-/// @notice Prototype custodian for one hookless, statically priced X/Q pool
-/// and one Q-funded v4 position per Pons launch token X. The controller must
-/// provide bounded funding. Live spot and full-inventory executable depth
-/// are checked before mint. Boundary exits use the bound settlement router;
-/// ETH-valued return accounting remains separate integration work.
+/// @notice Custodian for one hookless X/Q pool and three newly-minted-Q v4
+/// positions per Pons launch X. The configured starting price and ranges are
+/// deterministic X/Q terms; the pool's later price is set by swaps.
 contract HooklessLPExecutor {
     using HooklessTickMath for int24;
 
@@ -152,25 +151,49 @@ contract HooklessLPExecutor {
 
     struct OpenConfig {
         uint160 startingSqrtPriceX96;
-        uint128 liquidity;
-        uint128 maxQuoteIn;
+        uint128[3] liquidity;
+        uint128[3] maxQuoteIn;
         int24 tickSpacing;
-        int24 tickLower;
-        int24 tickUpper;
+        int24[3] tickLower;
+        int24[3] tickUpper;
         uint64 deadline;
     }
 
     struct ExitConfig {
+        uint8 tranche;
         uint128 minTokenOut;
         uint128 minQuoteOut;
         uint256 minEthOut;
         uint256 minQOut;
+        uint64 deadline;
+        bool timed;
+    }
+
+    struct HarvestConfig {
+        uint128 minTokenFee;
+        uint128 minQuoteFee;
+        uint256 minEthOut;
+        uint256 minQOut;
+        uint256 grossEthValue;
+        uint32 estimatedGasUnits;
         uint64 deadline;
     }
 
     struct HarvestedAmounts {
         uint256 tokenAmount;
         uint256 quoteAmount;
+    }
+
+    struct HarvestSnapshot {
+        uint256 tokenBefore;
+        uint256 quoteBefore;
+        uint256 nativeBefore;
+        uint256 supplyBefore;
+        uint256 newToken;
+        uint256 pendingToken;
+        uint256 pendingQuote;
+        uint256 totalQuote;
+        uint256 tokenToSettle;
     }
 
     struct ExitSnapshot {
@@ -201,8 +224,6 @@ contract HooklessLPExecutor {
     address public immutable owner;
     address public controller;
     address public quoteToken;
-    address public priceGuard;
-    address public depthGuard;
     address public settlementRouter;
     address public immutable poolManager;
     IHooklessPositionManager public immutable positionManager;
@@ -211,15 +232,15 @@ contract HooklessLPExecutor {
 
     mapping(address token => OpenConfig) public openConfigs;
     mapping(address token => ExitConfig) public exitConfigs;
+    mapping(address token => HarvestConfig) public harvestConfigs;
     mapping(address token => HarvestedAmounts) public harvestedAmounts;
     mapping(address token => Position) public positions;
+    mapping(address token => mapping(uint8 tranche => Position)) public extraPositions;
     uint256 public reservedHarvestedQuote;
 
     uint256 private _locked = 1;
 
     event ControllerBound(address indexed controller);
-    event PriceGuardBound(address indexed guard);
-    event DepthGuardBound(address indexed guard);
     event SettlementRouterBound(address indexed router);
     event OpenConfigured(address indexed token, uint160 startingSqrtPriceX96, int24 tickLower, int24 tickUpper);
     event ExitConfigured(
@@ -227,10 +248,13 @@ contract HooklessLPExecutor {
         uint256 minEthOut, uint256 minQOut, uint64 deadline
     );
     event PositionOpened(address indexed token, bytes32 indexed poolId, uint256 indexed tokenId, uint24 feePips, uint256 quoteSpent);
+    event TrancheOpened(address indexed token, uint8 indexed tranche, uint256 indexed tokenId, uint256 quoteSpent);
     event BandEntered(address indexed token, uint256 indexed tokenId);
     event FeesCollected(address indexed token, uint256 tokenAmount, uint256 quoteAmount);
+    event FeesSettled(address indexed token, uint256 tokenAmount, uint256 quoteAmount, uint256 ethOut, uint256 quoteBurned);
     event PositionWithdrawn(address indexed token, uint256 tokenAmount, uint256 quoteAmount);
     event PositionSettled(address indexed token, uint256 tokenSettled, uint256 quoteSettled, uint256 ethOut, uint256 quoteBurned);
+    event TrancheSettled(address indexed token, uint8 indexed tranche, uint256 indexed tokenId);
     event PositionRescued(address indexed token, address indexed recipient, uint256 tokenAmount, uint256 quoteAmount);
     event HeldAssetRescued(address indexed token, address indexed recipient, uint256 amount);
 
@@ -251,6 +275,20 @@ contract HooklessLPExecutor {
     error UnsettledHarvest();
     error WrongSettlement();
     error OutcomeUnavailable();
+
+    function _position(address token, uint8 tranche) private view returns (Position storage position) {
+        if (tranche > 2) revert InvalidConfiguration();
+        if (tranche == 0) return positions[token];
+        return extraPositions[token][tranche];
+    }
+
+    function activePositionCount(address token) external view returns (uint8) {
+        return _activeCount(token);
+    }
+
+    function _activeCount(address token) private view returns (uint8 count) {
+        for (uint8 i; i < 3; ++i) if (_position(token, i).active) ++count;
+    }
 
     modifier onlyController() {
         if (msg.sender != controller) revert NotController();
@@ -296,76 +334,30 @@ contract HooklessLPExecutor {
         emit ControllerBound(quoteToken_);
     }
 
-    /// @notice Bind the Q/ETH + Pons cross-price guard after Q and its launch
-    /// pool exist. Opening remains disabled until this reciprocal check passes.
-    function bindPriceGuard(address guard) external nonReentrant {
-        if (msg.sender != owner) revert NotOwner();
-        if (
-            priceGuard != address(0) || controller == address(0) || guard.code.length == 0 ||
-            IHooklessPriceGuard(guard).quoteToken() != quoteToken ||
-            IHooklessPriceGuard(guard).stateView() != address(stateView) ||
-            IHooklessPriceGuard(guard).ponsFactory() != IHooklessCursorQ(controller).ponsFactory()
-        ) revert InvalidConfiguration();
-        priceGuard = guard;
-        emit PriceGuardBound(guard);
-    }
-
-    /// @notice One-time bind after Q and its launch pool exist. The router is
-    /// deployed for this executor and the same Q/ETH pool as the open guard.
+    /// @notice One-time bind after Q and its launch pool exist. The router
+    /// constructs its own sale and quote-buy adapters and validates them.
     function bindSettlementRouter(address router) external nonReentrant {
         if (msg.sender != owner) revert NotOwner();
-        if (settlementRouter != address(0) || priceGuard == address(0) || router.code.length == 0) {
+        if (settlementRouter != address(0) || controller == address(0) || router.code.length == 0) {
             revert InvalidConfiguration();
         }
         IHooklessSettlementRouter route = IHooklessSettlementRouter(router);
         if (
             route.source() != address(this) || route.quoteToken() != quoteToken ||
             route.factory() != IHooklessCursorQ(controller).ponsFactory() ||
-            route.weth().code.length == 0 || route.wizardFanout().code.length == 0 ||
-            route.developer() == address(0)
-        ) revert InvalidConfiguration();
-        address buyer = route.quoteBuy();
-        if (buyer.code.length == 0) revert InvalidConfiguration();
-        IHooklessExitQuoteBuy quoteBuyer = IHooklessExitQuoteBuy(buyer);
-        if (
-            quoteBuyer.source() != router || quoteBuyer.poolManager() != poolManager ||
-            quoteBuyer.quoteToken() != quoteToken ||
-            quoteBuyer.poolId() != IHooklessPriceGuard(priceGuard).quoteEthPoolId()
-        ) revert InvalidConfiguration();
-        address activeSale = route.activeSale();
-        address graduatedSale = route.graduatedSale();
-        if (activeSale.code.length == 0 || graduatedSale.code.length == 0) revert InvalidConfiguration();
-        if (
-            IHooklessExitSaleAdapter(activeSale).source() != router ||
-            IHooklessExitSaleAdapter(graduatedSale).source() != router ||
-            IHooklessExitSaleAdapter(activeSale).factory() != route.factory() ||
-            IHooklessExitSaleAdapter(graduatedSale).factory() != route.factory()
+            route.wizardFanout().code.length == 0 || route.developer() == address(0) ||
+            route.quoteBuy().code.length == 0
         ) revert InvalidConfiguration();
         settlementRouter = router;
         emit SettlementRouterBound(router);
-    }
-
-    /// @notice Bind the executable full-inventory quote guard after the spot
-    /// guard and settlement router. The guard constructor verifies their Q,
-    /// Pons, and Quoter identities; this binding verifies its source trio.
-    function bindDepthGuard(address guard) external nonReentrant {
-        if (msg.sender != owner) revert NotOwner();
-        if (
-            depthGuard != address(0) || priceGuard == address(0) ||
-            settlementRouter == address(0) || guard.code.length == 0
-        ) revert InvalidConfiguration();
-        if (!IHooklessExecutableDepthGuard(guard).matches(address(this), priceGuard, settlementRouter)) {
-            revert InvalidConfiguration();
-        }
-        depthGuard = guard;
-        emit DepthGuardBound(guard);
     }
 
     /// @notice The controller must commit bounded price, range and spend data
     /// before open. Live executable depth is checked again inside open. A
     /// later retry uses this same configuration until the controller changes
     /// it, but the fee is supplied separately by the controller.
-    function configureOpen(address token, OpenConfig calldata config) external onlyController nonReentrant {
+    function configureOpen(address token, bytes calldata encodedPlan) external onlyController nonReentrant {
+        OpenConfig memory config = abi.decode(encodedPlan, (OpenConfig));
         if (
             token == address(0) || token == quoteToken || token.code.length == 0 ||
             positions[token].tokenId != 0
@@ -373,29 +365,36 @@ contract HooklessLPExecutor {
             revert InvalidConfiguration();
         }
         if (
-            config.liquidity == 0 || config.maxQuoteIn == 0 || config.deadline < block.timestamp ||
+            config.deadline < block.timestamp || config.deadline > block.timestamp + 15 minutes ||
             config.tickSpacing < 1 || config.tickSpacing > type(int16).max ||
-            config.tickLower < HooklessTickMath.MIN_TICK ||
-            config.tickUpper > HooklessTickMath.MAX_TICK ||
             config.startingSqrtPriceX96 < HooklessTickMath.MIN_SQRT_PRICE ||
-            config.startingSqrtPriceX96 >= HooklessTickMath.MAX_SQRT_PRICE ||
-            config.tickLower >= config.tickUpper ||
-            config.tickLower % config.tickSpacing != 0 ||
-            config.tickUpper % config.tickSpacing != 0
+            config.startingSqrtPriceX96 >= HooklessTickMath.MAX_SQRT_PRICE
         ) revert InvalidConfiguration();
-        uint160 lower = config.tickLower.getSqrtPriceAtTick();
-        uint160 upper = config.tickUpper.getSqrtPriceAtTick();
-        if (!_isQuoteOnly(token, config.startingSqrtPriceX96, lower, upper)) revert InvalidConfiguration();
+        for (uint8 i; i < 3; ++i) {
+            if (
+                config.liquidity[i] == 0 || config.maxQuoteIn[i] == 0 ||
+                config.tickLower[i] < HooklessTickMath.MIN_TICK ||
+                config.tickUpper[i] > HooklessTickMath.MAX_TICK ||
+                config.tickLower[i] >= config.tickUpper[i] ||
+                config.tickLower[i] % config.tickSpacing != 0 ||
+                config.tickUpper[i] % config.tickSpacing != 0
+            ) revert InvalidConfiguration();
+            uint160 lower = config.tickLower[i].getSqrtPriceAtTick();
+            uint160 upper = config.tickUpper[i].getSqrtPriceAtTick();
+            if (!_isQuoteOnly(token, config.startingSqrtPriceX96, lower, upper)) revert InvalidConfiguration();
+        }
         openConfigs[token] = config;
-        emit OpenConfigured(token, config.startingSqrtPriceX96, config.tickLower, config.tickUpper);
+        emit OpenConfigured(token, config.startingSqrtPriceX96, config.tickLower[0], config.tickUpper[2]);
     }
 
     /// @notice Commit short-lived burn and swap minima. The controller only
     /// forwards this after the inspector has queued a boundary exit.
-    function configureExit(address token, ExitConfig calldata config) external onlyController nonReentrant {
-        Position storage position = positions[token];
+    function configureExit(address token, bytes calldata encodedConfig) external onlyController nonReentrant {
+        ExitConfig memory config = abi.decode(encodedConfig, (ExitConfig));
+        Position storage position = _position(token, config.tranche);
         if (
-            !position.active || !position.enteredBand || settlementRouter == address(0) ||
+            !position.active || (!config.timed && !position.enteredBand) ||
+            settlementRouter == address(0) ||
             (config.minTokenOut == 0 && config.minQuoteOut == 0) ||
             (config.minEthOut == 0) != (config.minQOut == 0) ||
             config.deadline < block.timestamp || config.deadline > block.timestamp + 15 minutes
@@ -407,50 +406,77 @@ contract HooklessLPExecutor {
         );
     }
 
+    /// @notice Short-lived, signer-quoted fee claim. The signer supplies an
+    /// executable ETH valuation and whole-cycle gas estimate; harvest checks
+    /// the actual collected minimums and settlement bounds in the same call.
+    /// No claim depends on the position reaching an exit boundary.
+    function configureHarvest(address token, HarvestConfig calldata config) external onlyController nonReentrant {
+        if (
+            _activeCount(token) == 0 || settlementRouter == address(0) ||
+            config.deadline < block.timestamp || config.deadline > block.timestamp + 15 minutes ||
+            config.grossEthValue == 0 || config.estimatedGasUnits == 0 ||
+            (config.minTokenFee == 0 && config.minQuoteFee == 0) ||
+            (config.minTokenFee == 0 && (config.minEthOut != 0 || config.minQOut != 0)) ||
+            (config.minTokenFee != 0 && (config.minEthOut == 0 || config.minQOut == 0))
+        ) revert InvalidConfiguration();
+        harvestConfigs[token] = config;
+    }
+
     /// @notice Creates a new zero-hook, static-fee pool and Q-only position in
-    /// the same PositionManager multicall. `feePips` is the controller's frozen
-    /// selection for this token (50,000 = 5%; 500,000 = 50%).
-    function open(address token, uint24 feePips) external onlyController nonReentrant {
-        Position storage position = positions[token];
-        if (position.active || position.tokenId != 0) revert AlreadyOpened();
+    /// the same PositionManager multicall. The controller first mints a fixed
+    /// fraction of current Q supply to this vault in the same atomic call.
+    /// `feePips` is the controller's frozen selection for this token.
+    function open(address token, uint24 feePips, uint256[3] calldata mintedQuote)
+        external onlyController nonReentrant returns (uint256[3] memory quoteSpent)
+    {
+        if (positions[token].tokenId != 0) revert AlreadyOpened();
         OpenConfig memory config = openConfigs[token];
         if (
-            config.liquidity == 0 || config.deadline < block.timestamp ||
+            config.liquidity[0] == 0 || config.deadline < block.timestamp ||
             feePips < 50_000 || feePips > 500_000 || quoteToken.code.length == 0 ||
-            priceGuard == address(0) || depthGuard == address(0) || settlementRouter == address(0)
+            settlementRouter == address(0)
         ) revert InvalidConfiguration();
-
-        // The price keeper's saved config may be stale by the time a Q
-        // transfer processes it. Check live source prices in this same tx.
-        IHooklessPriceGuard(priceGuard).validate(token, config.startingSqrtPriceX96);
+        uint256 totalMinted;
+        for (uint8 i; i < 3; ++i) {
+            if (mintedQuote[i] == 0 || config.maxQuoteIn[i] > mintedQuote[i]) revert InvalidConfiguration();
+            totalMinted += mintedQuote[i];
+        }
 
         IHooklessPositionManager.PoolKey memory key = _poolKey(token, feePips, config.tickSpacing);
         bytes32 poolId = keccak256(abi.encode(key));
         (uint160 beforePrice,,,) = stateView.getSlot0(poolId);
         if (beforePrice != 0) revert AlreadyInitialized();
 
-        uint160 lower = config.tickLower.getSqrtPriceAtTick();
-        uint160 upper = config.tickUpper.getSqrtPriceAtTick();
-        if (!_isQuoteOnly(token, config.startingSqrtPriceX96, lower, upper)) revert InvalidConfiguration();
-
-        // Quoter swaps are simulated by a reversible PoolManager unlock. This
-        // must be a non-view call in the same transaction as initialization.
-        IHooklessExecutableDepthGuard(depthGuard).validate(
-            token, config.liquidity, config.tickLower, config.tickUpper
-        );
-
-        (uint256 tokenId, uint256 quoteSpent) = _initializeAndMint(token, key, config, poolId);
-
-        position.tokenId = tokenId;
-        position.poolId = poolId;
-        position.feePips = feePips;
-        position.tickSpacing = config.tickSpacing;
-        position.tickLower = config.tickLower;
-        position.tickUpper = config.tickUpper;
-        position.active = true;
-        position.quoteSpent = quoteSpent;
+        uint256 quoteBefore = IHooklessERC20(quoteToken).balanceOf(address(this));
+        uint256 tokenBefore = IHooklessERC20(token).balanceOf(address(this));
+        if (quoteBefore < totalMinted || quoteBefore - totalMinted < reservedHarvestedQuote) {
+            revert InvalidConfiguration();
+        }
+        positionManager.initializePool(key, config.startingSqrtPriceX96);
+        for (uint8 i; i < 3; ++i) {
+            uint256 tokenId = positionManager.nextTokenId();
+            quoteSpent[i] = _mintTranche(token, key, config, i);
+            Position storage position = _position(token, i);
+            position.tokenId = tokenId;
+            position.poolId = poolId;
+            position.feePips = feePips;
+            position.tickSpacing = config.tickSpacing;
+            position.tickLower = config.tickLower[i];
+            position.tickUpper = config.tickUpper[i];
+            position.active = true;
+            position.quoteSpent = quoteSpent[i];
+            emit PositionOpened(token, poolId, tokenId, feePips, quoteSpent[i]);
+            emit TrancheOpened(token, i, tokenId, quoteSpent[i]);
+        }
+        (uint160 afterPrice,,, uint24 liveFee) = stateView.getSlot0(poolId);
+        if (afterPrice != config.startingSqrtPriceX96 || liveFee != feePips ||
+            IHooklessERC20(token).balanceOf(address(this)) != tokenBefore) revert WrongPoolState();
         delete openConfigs[token];
-        emit PositionOpened(token, poolId, tokenId, feePips, position.quoteSpent);
+        uint256 totalSpent = quoteSpent[0] + quoteSpent[1] + quoteSpent[2];
+        if (quoteBefore - IHooklessERC20(quoteToken).balanceOf(address(this)) != totalSpent) {
+            revert WrongPosition();
+        }
+        if (totalMinted > totalSpent) IHooklessCursorQ(quoteToken).burn(totalMinted - totalSpent);
     }
 
     /// @notice Exact live range state. `atQuoteBoundary` can be true straight
@@ -467,7 +493,19 @@ contract HooklessLPExecutor {
             bool enteredBand
         )
     {
-        Position storage position = positions[token];
+        return inspectTranche(token, 0);
+    }
+
+    function inspectTranche(address token, uint8 tranche)
+        public view returns (
+            uint160 sqrtPriceX96,
+            bool inBand,
+            bool atQuoteBoundary,
+            bool atTokenBoundary,
+            bool enteredBand
+        )
+    {
+        Position storage position = _position(token, tranche);
         if (!position.active) revert NotActive();
         (sqrtPriceX96,,,) = stateView.getSlot0(position.poolId);
         uint160 lower = position.tickLower.getSqrtPriceAtTick();
@@ -483,58 +521,153 @@ contract HooklessLPExecutor {
     /// full crossing to the all-X side from the verified Q-only initial side.
     /// The latter handles a single swap traversing the whole position band.
     function markEntered(address token) external nonReentrant {
-        Position storage position = positions[token];
+        _markEntered(token, 0);
+    }
+
+    function markEnteredTranche(address token, uint8 tranche) external nonReentrant {
+        _markEntered(token, tranche);
+    }
+
+    function _markEntered(address token, uint8 tranche) private {
+        Position storage position = _position(token, tranche);
         if (!position.active) revert NotActive();
         if (position.enteredBand) return;
-        (, bool inBand,, bool atTokenBoundary,) = inspect(token);
+        (, bool inBand,, bool atTokenBoundary,) = inspectTranche(token, tranche);
         if (!inBand && !atTokenBoundary) revert NotInBand();
         position.enteredBand = true;
         emit BandEntered(token, position.tokenId);
     }
 
-    /// @notice Collects X and Q swap fees while leaving principal liquidity.
-    /// `previewHarvest` deliberately reverts until executable ETH valuation and
-    /// gas estimation exist, so the cursor will not schedule this by mistake.
+    /// @notice Simulate a zero-liquidity fee collection with eth_call from Q.
+    /// This is deliberately non-view: the offchain call runs the real v4
+    /// PositionManager path and discards its state at the end of eth_call.
+    /// The Q contract never forwards an onchain call to this method.
+    function simulateHarvest(address token)
+        external onlyController nonReentrant returns (uint256 tokenAmount, uint256 quoteAmount)
+    {
+        if (_activeCount(token) == 0) revert NotActive();
+        (tokenAmount, quoteAmount) = _collectFees(token);
+        HarvestedAmounts memory pending = harvestedAmounts[token];
+        tokenAmount += pending.tokenAmount;
+        quoteAmount += pending.quoteAmount;
+    }
+
+    /// @notice Collect fees without touching LP principal, then settle the
+    /// executable X and all Q now. A Q-only claim burns Q. If Q fees alone pay
+    /// for gas but X fees cannot yet be sold, X remains reserved for a later
+    /// harvest or the boundary exit.
     function harvest(address token) external onlyController nonReentrant {
-        Position storage position = positions[token];
-        if (!position.active) revert NotActive();
-        IHooklessPositionManager.PoolKey memory key = _poolKey(token, position.feePips, position.tickSpacing);
+        if (_activeCount(token) == 0) revert NotActive();
+        HarvestConfig memory config = harvestConfigs[token];
+        if (config.deadline < block.timestamp || config.deadline > block.timestamp + 15 minutes) {
+            revert InvalidConfiguration();
+        }
+        HarvestSnapshot memory snapshot;
+        snapshot.tokenBefore = IHooklessERC20(token).balanceOf(address(this));
+        snapshot.quoteBefore = IHooklessERC20(quoteToken).balanceOf(address(this));
+        snapshot.nativeBefore = address(this).balance;
+        snapshot.supplyBefore = IHooklessCursorQ(quoteToken).totalSupply();
+        HarvestedAmounts memory pending = harvestedAmounts[token];
+        snapshot.pendingToken = pending.tokenAmount;
+        snapshot.pendingQuote = pending.quoteAmount;
+        uint256 newQuote;
+        (snapshot.newToken, newQuote) = _collectFees(token);
+        uint256 totalToken = snapshot.newToken + snapshot.pendingToken;
+        snapshot.totalQuote = newQuote + snapshot.pendingQuote;
+        if (totalToken < config.minTokenFee || snapshot.totalQuote < config.minQuoteFee) {
+            revert NoTokensReceived();
+        }
+        snapshot.tokenToSettle = config.minTokenFee == 0 ? 0 : totalToken;
+        if (snapshot.tokenToSettle == 0 && snapshot.totalQuote == 0) revert NoTokensReceived();
+        (uint256 ethOut, uint256 quoteBurned) = _routeHarvest(token, config, snapshot);
+        harvestedAmounts[token].tokenAmount = totalToken - snapshot.tokenToSettle;
+        harvestedAmounts[token].quoteAmount = 0;
+        reservedHarvestedQuote -= snapshot.pendingQuote;
+        delete harvestConfigs[token];
+        emit FeesSettled(token, snapshot.tokenToSettle, snapshot.totalQuote, ethOut, quoteBurned);
+    }
+
+    function _routeHarvest(address token, HarvestConfig memory config, HarvestSnapshot memory snapshot)
+        private returns (uint256 ethOut, uint256 quoteBurned)
+    {
+        address router = settlementRouter;
+        _approveExact(token, router, snapshot.tokenToSettle);
+        _approveExact(quoteToken, router, snapshot.totalQuote);
+        (ethOut, quoteBurned) = IHooklessSettlementRouter(router).settle(
+            token, snapshot.tokenToSettle, snapshot.totalQuote,
+            config.minEthOut, config.minQOut, config.deadline
+        );
+        _clearApproval(token, router, snapshot.tokenToSettle);
+        _clearApproval(quoteToken, router, snapshot.totalQuote);
+        if (
+            (snapshot.tokenToSettle == 0 && (ethOut != 0 || quoteBurned != snapshot.totalQuote)) ||
+            (snapshot.tokenToSettle != 0 &&
+                (ethOut < config.minEthOut || quoteBurned < snapshot.totalQuote + config.minQOut)) ||
+            IHooklessERC20(token).balanceOf(address(this)) !=
+                snapshot.tokenBefore + snapshot.newToken - snapshot.tokenToSettle ||
+            IHooklessERC20(quoteToken).balanceOf(address(this)) !=
+                snapshot.quoteBefore - snapshot.pendingQuote ||
+            address(this).balance != snapshot.nativeBefore ||
+            IHooklessCursorQ(quoteToken).totalSupply() != snapshot.supplyBefore - quoteBurned
+        ) revert WrongSettlement();
+    }
+
+    function _collectFees(address token) private returns (uint256 tokenAmount, uint256 quoteAmount) {
         uint256 tokenBefore = IHooklessERC20(token).balanceOf(address(this));
         uint256 quoteBefore = IHooklessERC20(quoteToken).balanceOf(address(this));
-        bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(position.tokenId, uint256(0), uint128(0), uint128(0), bytes(""));
-        params[1] = abi.encode(key.currency0, key.currency1, address(this));
-        positionManager.modifyLiquidities(
-            abi.encode(abi.encodePacked(DECREASE_LIQUIDITY, TAKE_PAIR), params), block.timestamp
-        );
-        uint256 tokenAmount = IHooklessERC20(token).balanceOf(address(this)) - tokenBefore;
-        uint256 quoteAmount = IHooklessERC20(quoteToken).balanceOf(address(this)) - quoteBefore;
-        if (tokenAmount == 0 && quoteAmount == 0) revert NoTokensReceived();
-        harvestedAmounts[token].tokenAmount += tokenAmount;
-        harvestedAmounts[token].quoteAmount += quoteAmount;
-        reservedHarvestedQuote += quoteAmount;
+        uint8 count;
+        for (uint8 i; i < 3; ++i) {
+            Position storage position = _position(token, i);
+            if (!position.active) continue;
+            ++count;
+            IHooklessPositionManager.PoolKey memory key = _poolKey(token, position.feePips, position.tickSpacing);
+            bytes[] memory params = new bytes[](2);
+            params[0] = abi.encode(position.tokenId, uint256(0), uint128(0), uint128(0), bytes(""));
+            params[1] = abi.encode(key.currency0, key.currency1, address(this));
+            positionManager.modifyLiquidities(
+                abi.encode(abi.encodePacked(DECREASE_LIQUIDITY, TAKE_PAIR), params), block.timestamp
+            );
+        }
+        if (count == 0) revert NotActive();
+        tokenAmount = IHooklessERC20(token).balanceOf(address(this)) - tokenBefore;
+        quoteAmount = IHooklessERC20(quoteToken).balanceOf(address(this)) - quoteBefore;
         emit FeesCollected(token, tokenAmount, quoteAmount);
     }
 
-    function previewHarvest(address) external pure returns (uint256, uint256) {
-        revert OutcomeUnavailable();
+    function previewHarvest(address token) external view returns (uint256 grossEthValue, uint256 estimatedGasUnits) {
+        if (_activeCount(token) == 0) revert NotActive();
+        HarvestConfig memory config = harvestConfigs[token];
+        if (config.deadline < block.timestamp || config.grossEthValue == 0 || config.estimatedGasUnits == 0) {
+            revert OutcomeUnavailable();
+        }
+        return (config.grossEthValue, config.estimatedGasUnits);
     }
 
     /// @notice Mechanically withdraws and collects everything from a position.
     /// The proceeds remain in this vault for a later liquidation/burn/payout
     /// implementation. Minima apply to principal; fee receipts can add more.
-    function withdrawPosition(address token, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline)
+    function withdrawTranche(address token, uint8 tranche, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline)
         external onlyController nonReentrant returns (uint256 tokenAmount, uint256 quoteAmount)
     {
-        Position storage position = positions[token];
+        Position storage position = _position(token, tranche);
         if (!position.active) revert NotActive();
         if (!position.enteredBand) revert NotEnteredBand();
-        (, , bool atQuoteBoundary, bool atTokenBoundary,) = inspect(token);
+        (, , bool atQuoteBoundary, bool atTokenBoundary,) = inspectTranche(token, tranche);
         if (!atQuoteBoundary && !atTokenBoundary) revert NotAtBoundary();
         if ((atQuoteBoundary && minQuoteOut == 0) || (atTokenBoundary && minTokenOut == 0)) {
             revert InvalidConfiguration();
         }
-        return _burnPosition(token, minTokenOut, minQuoteOut, deadline);
+        return _burnPosition(token, tranche, minTokenOut, minQuoteOut, deadline);
+    }
+
+    /// @notice Offchain eth_call helper for a Q-authorized 120-minute unwind.
+    /// It simulates a real NFT burn at any tick and returns the two receipts;
+    /// an eth_call discards the temporary state. Q does not forward normal
+    /// onchain calls to this function.
+    function simulateTimedWithdraw(
+        address token, uint8 tranche, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline
+    ) external onlyController nonReentrant returns (uint256 tokenAmount, uint256 quoteAmount) {
+        return _burnPosition(token, tranche, minTokenOut, minQuoteOut, deadline);
     }
 
     /// @notice Owner-triggered recovery through Q. It may withdraw at any
@@ -544,7 +677,14 @@ contract HooklessLPExecutor {
         address token, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline, address recipient
     ) external onlyController nonReentrant returns (uint256 tokenAmount, uint256 quoteAmount) {
         if (recipient == address(0)) revert InvalidConfiguration();
-        (tokenAmount, quoteAmount) = _burnPosition(token, minTokenOut, minQuoteOut, deadline);
+        if (_activeCount(token) == 0) revert NotActive();
+        for (uint8 i; i < 3; ++i) {
+            if (!_position(token, i).active) continue;
+            (uint256 xOut, uint256 qOut) = _burnPosition(token, i, 0, 0, deadline);
+            tokenAmount += xOut;
+            quoteAmount += qOut;
+        }
+        if (tokenAmount < minTokenOut || quoteAmount < minQuoteOut) revert WrongPosition();
         HarvestedAmounts memory harvested = harvestedAmounts[token];
         tokenAmount += harvested.tokenAmount;
         quoteAmount += harvested.quoteAmount;
@@ -574,10 +714,10 @@ contract HooklessLPExecutor {
         emit HeldAssetRescued(token, recipient, amount);
     }
 
-    function _burnPosition(address token, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline)
+    function _burnPosition(address token, uint8 tranche, uint128 minTokenOut, uint128 minQuoteOut, uint64 deadline)
         private returns (uint256 tokenAmount, uint256 quoteAmount)
     {
-        Position storage position = positions[token];
+        Position storage position = _position(token, tranche);
         if (!position.active) revert NotActive();
         if (deadline < block.timestamp) revert InvalidConfiguration();
         IHooklessPositionManager.PoolKey memory key = _poolKey(token, position.feePips, position.tickSpacing);
@@ -605,12 +745,16 @@ contract HooklessLPExecutor {
     /// The router liquidates X, buys/burns Q and pays configured recipients.
     /// No ETH-valued return is fabricated for fee-policy feedback yet.
     function exit(address token) external onlyController nonReentrant returns (int32 netReturnBps, bool comparable) {
-        Position storage position = positions[token];
-        if (!position.active) revert NotActive();
-        if (!position.enteredBand) revert NotEnteredBand();
-        (, , bool atQuoteBoundary, bool atTokenBoundary,) = inspect(token);
-        if (!atQuoteBoundary && !atTokenBoundary) revert NotAtBoundary();
         ExitConfig memory config = exitConfigs[token];
+        Position storage position = _position(token, config.tranche);
+        if (!position.active) revert NotActive();
+        bool atQuoteBoundary;
+        bool atTokenBoundary;
+        if (!config.timed) {
+            if (!position.enteredBand) revert NotEnteredBand();
+            (, , atQuoteBoundary, atTokenBoundary,) = inspectTranche(token, config.tranche);
+            if (!atQuoteBoundary && !atTokenBoundary) revert NotAtBoundary();
+        }
         if (
             config.deadline < block.timestamp || config.deadline > block.timestamp + 15 minutes ||
             (atQuoteBoundary && config.minQuoteOut == 0) ||
@@ -622,6 +766,7 @@ contract HooklessLPExecutor {
         delete harvestedAmounts[token];
         delete exitConfigs[token];
         emit PositionSettled(token, snapshot.tokenToSettle, snapshot.quoteToSettle, ethOut, quoteBurned);
+        emit TrancheSettled(token, config.tranche, position.tokenId);
         return (0, false);
     }
 
@@ -634,7 +779,7 @@ contract HooklessLPExecutor {
         snapshot.harvestedToken = harvested.tokenAmount;
         snapshot.harvestedQuote = harvested.quoteAmount;
         (uint256 tokenFromBurn, uint256 quoteFromBurn) =
-            _burnPosition(token, config.minTokenOut, config.minQuoteOut, config.deadline);
+            _burnPosition(token, config.tranche, config.minTokenOut, config.minQuoteOut, config.deadline);
         snapshot.tokenToSettle = tokenFromBurn + harvested.tokenAmount;
         snapshot.quoteToSettle = quoteFromBurn + harvested.quoteAmount;
         if (snapshot.tokenToSettle == 0 && snapshot.quoteToSettle == 0) revert NoTokensReceived();
@@ -716,52 +861,37 @@ contract HooklessLPExecutor {
         permit2.approve(quoteToken, address(positionManager), type(uint160).max, type(uint48).max);
     }
 
-    function _initializeAndMint(
+    function _mintTranche(
         address token,
         IHooklessPositionManager.PoolKey memory key,
         OpenConfig memory config,
-        bytes32 poolId
-    ) private returns (uint256 tokenId, uint256 quoteSpent) {
-        tokenId = positionManager.nextTokenId();
+        uint8 tranche
+    ) private returns (uint256 quoteSpent) {
+        uint256 tokenId = positionManager.nextTokenId();
         uint256 quoteBefore = IHooklessERC20(quoteToken).balanceOf(address(this));
         uint256 tokenBefore = IHooklessERC20(token).balanceOf(address(this));
-        uint256 reserved = reservedHarvestedQuote;
-        if (quoteBefore < reserved || quoteBefore - reserved < config.maxQuoteIn) revert InvalidConfiguration();
-        _approveQuote(config.maxQuoteIn);
-        _positionMulticall(key, config);
-
-        (uint160 afterPrice,,, uint24 liveFee) = stateView.getSlot0(poolId);
-        if (afterPrice != config.startingSqrtPriceX96 || liveFee != key.fee) revert WrongPoolState();
+        _approveQuote(config.maxQuoteIn[tranche]);
+        bytes[] memory params = new bytes[](2);
+        uint128 max0 = quoteToken == key.currency0 ? config.maxQuoteIn[tranche] : 0;
+        uint128 max1 = quoteToken == key.currency1 ? config.maxQuoteIn[tranche] : 0;
+        params[0] = abi.encode(
+            key, config.tickLower[tranche], config.tickUpper[tranche],
+            uint256(config.liquidity[tranche]), max0, max1, address(this), bytes("")
+        );
+        params[1] = abi.encode(key.currency0, key.currency1);
+        positionManager.modifyLiquidities(
+            abi.encode(abi.encodePacked(MINT_POSITION, SETTLE_PAIR), params), uint256(config.deadline)
+        );
         if (
             positionManager.ownerOf(tokenId) != address(this) ||
-            positionManager.getPositionLiquidity(tokenId) != config.liquidity
+            positionManager.getPositionLiquidity(tokenId) != config.liquidity[tranche]
         ) revert WrongPosition();
         uint256 quoteAfter = IHooklessERC20(quoteToken).balanceOf(address(this));
         if (
-            quoteAfter < reserved || quoteAfter >= quoteBefore ||
-            quoteBefore - quoteAfter > config.maxQuoteIn
+            quoteAfter < reservedHarvestedQuote || quoteAfter >= quoteBefore ||
+            quoteBefore - quoteAfter > config.maxQuoteIn[tranche]
         ) revert WrongPosition();
         if (IHooklessERC20(token).balanceOf(address(this)) != tokenBefore) revert WrongPosition();
         quoteSpent = quoteBefore - quoteAfter;
-    }
-
-    function _positionMulticall(IHooklessPositionManager.PoolKey memory key, OpenConfig memory config) private {
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(
-            IHooklessPositionManager.initializePool.selector, key, config.startingSqrtPriceX96
-        );
-        bytes[] memory params = new bytes[](2);
-        uint128 max0 = quoteToken == key.currency0 ? config.maxQuoteIn : 0;
-        uint128 max1 = quoteToken == key.currency1 ? config.maxQuoteIn : 0;
-        params[0] = abi.encode(
-            key, config.tickLower, config.tickUpper, uint256(config.liquidity),
-            max0, max1, address(this), bytes("")
-        );
-        params[1] = abi.encode(key.currency0, key.currency1);
-        calls[1] = abi.encodeWithSelector(
-            IHooklessPositionManager.modifyLiquidities.selector,
-            abi.encode(abi.encodePacked(MINT_POSITION, SETTLE_PAIR), params), uint256(config.deadline)
-        );
-        positionManager.multicall(calls);
     }
 }

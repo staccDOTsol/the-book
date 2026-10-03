@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fee_outcome_ledger as ledger
+import pons_fee_feedback_keeper as feedback
 
 
 Q = 10**18
@@ -199,6 +200,67 @@ class OutcomeLedgerTests(unittest.TestCase):
         document = example()
         document["observations"][0]["entry_q_eth_quote"]["q_amount_wei"] = str(Q)
         with self.assertRaisesRegex(ledger.EvidenceError, "whole relevant Q"):
+            ledger.analyze(document)
+
+
+class MintedQuoteLedgerTests(unittest.TestCase):
+    def evidence(self) -> dict:
+        observed = {"token": TOKEN, "feePips": 100_000, "trancheCount": 3,
+                    "qMintedWei": "1200", "qUnusedBurnedAtOpenWei": "200",
+                    "qSpentWei": "1000", "qBurnedWei": "800",
+                    "settlementBurns": [
+                        {"kind": "position_exit", "block": 120, "qBurnedWei": "200"},
+                        {"kind": "position_exit", "block": 130, "qBurnedWei": "200"},
+                        {"kind": "position_exit", "block": 150, "qBurnedWei": "400"}],
+                    "recipientCashEthWei": "400", "openBlock": 100,
+                    "exitBlock": 150}
+        return {"schemaVersion": 1, "chainId": 4663, "token": TOKEN,
+                "observation": observed,
+                "entryQuote": {"route": "zero-hook Q/ETH exact-input Q sale",
+                               "sourceBlock": 99, "sourceBlockHash": "0x" + "aa" * 32,
+                               "qInputWei": "1000", "ethOutputWei": "500"},
+                "burnQuotes": [
+                    {"route": "zero-hook Q/ETH exact-input Q sale",
+                     "sourceBlock": 119, "sourceBlockHash": "0x" + "bb" * 32,
+                     "qInputWei": "200", "ethOutputWei": "75"},
+                    {"route": "zero-hook Q/ETH exact-input Q sale",
+                     "sourceBlock": 129, "sourceBlockHash": "0x" + "cc" * 32,
+                     "qInputWei": "200", "ethOutputWei": "75"},
+                    {"route": "zero-hook Q/ETH exact-input Q sale",
+                     "sourceBlock": 149, "sourceBlockHash": "0x" + "dd" * 32,
+                     "qInputWei": "400", "ethOutputWei": "150"}],
+                "score": feedback.gross_mark_score(observed, 500, 300)}
+
+    def test_minted_q_score_includes_idle_and_censored_assignments(self):
+        document = {"schema_version": 2, "chain_id": 4663,
+                    "as_of_block": 200, "cursor_address": "0x" + "55" * 20,
+                    "observations": [
+                        {"token": TOKEN, "fee_pips": 100_000, "stage": "exited",
+                         "evidence": self.evidence()},
+                        {"token": "0x" + "33" * 20, "fee_pips": 100_000,
+                         "stage": "active", "observed_swap_count": 0},
+                        {"token": "0x" + "44" * 20, "fee_pips": 100_000,
+                         "stage": "exited"},
+                    ]}
+        outcome = ledger.analyze(document)
+        arm = outcome["arms"][0]
+        self.assertEqual(outcome["observations"][0]["gross_mark_score_bps"], 4000)
+        self.assertEqual(arm["assigned"], 3)
+        self.assertEqual(arm["completed_with_gross_mark"], 1)
+        self.assertEqual(arm["idle_open_at_horizon"], 1)
+        self.assertEqual(arm["unvalued_or_censored"], 1)
+        self.assertEqual(arm["selection_score_sum_bps"], -6000)
+        self.assertFalse(outcome["profit_claim"])
+        calls = ledger.draft_report_calls(document, outcome)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["gross_mark_score_bps"], 4000)
+
+    def test_minted_q_quote_must_cover_full_burn_at_previous_block(self):
+        document = {"schema_version": 2, "chain_id": 4663, "as_of_block": 200,
+                    "observations": [{"token": TOKEN, "fee_pips": 100_000,
+                                      "stage": "exited", "evidence": self.evidence()}]}
+        document["observations"][0]["evidence"]["burnQuotes"][0]["qInputWei"] = "199"
+        with self.assertRaisesRegex(ledger.EvidenceError, "quotes do not cover exact"):
             ledger.analyze(document)
 
 

@@ -26,6 +26,7 @@ SUPERVISOR_FRESH_SECONDS = 90
 CYCLE_FRESH_SECONDS = 120
 ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}\Z")
 HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
+ZERO_ADDRESS = "0x" + "0" * 40
 JOURNALS = {
     "watcher": ("pons-launch-watcher.json", "pending"),
     "price": ("pons-price-keeper.json", "pendingTx"),
@@ -34,6 +35,7 @@ JOURNALS = {
 SUPERVISOR_FILE = "pons-keeper-supervisor-status.json"
 SUPERVISOR_STATUSES = {"starting", "running", "retrying", "stopped"}
 WATCHER_STATUSES = {"not_started", "process_running", "restarting", "retrying", "stopped"}
+KEEPER_NAMES = ("exit", "price", "feedback", "harvest")
 SAFE_ERROR_MESSAGES = {
     "Both configurator keepers have pending signed transactions.",
     "A keeper cycle exceeded its timeout.",
@@ -133,6 +135,12 @@ def component_status(local: Path, name: str) -> dict[str, Any]:
             result["state"] = "invalid"
             return result
         result["guard"] = data["guard"].lower()
+        # The opening keeper now has no spot/depth gate and binds its journal
+        # to zero. The exit keeper still uses a nonzero guard for cash quotes.
+        if ((name == "price" and result["guard"] != ZERO_ADDRESS) or
+                (name == "exit" and result["guard"] == ZERO_ADDRESS)):
+            result["state"] = "invalid"
+            return result
         result["tokenCount" if name == "price" else "activeCount"] = len(tokens)
     result.update(chainId=data["chainId"], q=data["q"].lower(),
                   lastBlock=data["lastBlock"],
@@ -147,8 +155,8 @@ def supervisor_status(local: Path, current: datetime) -> dict[str, Any]:
         "state": presence, "status": None, "watcherStatus": None,
         "updatedAt": None, "fresh": False, "lastCompletedKeepers": [],
         "lastCompletedAt": None, "cycleFresh": False,
-        "lastCompletedAtByKeeper": {"exit": None, "price": None},
-        "keeperFresh": {"exit": False, "price": False},
+        "lastCompletedAtByKeeper": {name: None for name in KEEPER_NAMES},
+        "keeperFresh": {name: False for name in KEEPER_NAMES},
         "consecutiveFailures": None, "watcherConsecutiveFailures": None,
         "lastError": None,
     }
@@ -161,12 +169,12 @@ def supervisor_status(local: Path, current: datetime) -> dict[str, Any]:
     if raw_keeper_times is None:
         # Older heartbeat format remains readable but cannot prove both
         # independent signer loops are currently making progress.
-        raw_keeper_times = {"exit": None, "price": None}
+        raw_keeper_times = {name: None for name in KEEPER_NAMES}
     if (not isinstance(raw_keeper_times, dict) or
-            set(raw_keeper_times) != {"exit", "price"}):
+            set(raw_keeper_times) not in ({"exit", "price"}, set(KEEPER_NAMES))):
         result["state"] = "invalid"
         return result
-    keeper_times = {name: parse_time(raw_keeper_times[name]) for name in ("exit", "price")}
+    keeper_times = {name: parse_time(raw_keeper_times.get(name)) for name in KEEPER_NAMES}
     if (not isinstance(data, dict) or type(data.get("schemaVersion")) is not int or
             data.get("schemaVersion") != 1 or
             not isinstance(data.get("status"), str) or
@@ -175,10 +183,10 @@ def supervisor_status(local: Path, current: datetime) -> dict[str, Any]:
             data.get("watcherStatus") not in WATCHER_STATUSES or updated is None or
             (data.get("lastCompletedAt") is not None and completed_at is None) or
             not isinstance(completed, list) or
-            any(name not in ("price", "exit") for name in completed) or
+            any(name not in KEEPER_NAMES for name in completed) or
             len(set(completed)) != len(completed) or
-            any(raw_keeper_times[name] is not None and keeper_times[name] is None
-                for name in ("exit", "price")) or
+            any(raw_keeper_times.get(name) is not None and keeper_times[name] is None
+                for name in KEEPER_NAMES) or
             not is_number(data.get("consecutiveFailures")) or
             not is_number(data.get("watcherConsecutiveFailures"))):
         result["state"] = "invalid"
@@ -200,9 +208,9 @@ def supervisor_status(local: Path, current: datetime) -> dict[str, Any]:
         lastCompletedAt=iso(completed_at) if completed_at else None,
         cycleFresh=fresh(completed_at, current, CYCLE_FRESH_SECONDS),
         lastCompletedAtByKeeper={name: iso(keeper_times[name]) if keeper_times[name] else None
-                                 for name in ("exit", "price")},
+                                 for name in KEEPER_NAMES},
         keeperFresh={name: fresh(keeper_times[name], current, CYCLE_FRESH_SECONDS)
-                     for name in ("exit", "price")},
+                     for name in KEEPER_NAMES},
         consecutiveFailures=data["consecutiveFailures"],
         watcherConsecutiveFailures=data["watcherConsecutiveFailures"],
         lastError=error,
@@ -217,9 +225,7 @@ def snapshot(local: Path = LOCAL, current: datetime | None = None) -> dict[str, 
     states = [item["state"] for item in components.values()]
     q_values = {item["q"] for item in components.values() if item["state"] == "valid"}
     chains = {item["chainId"] for item in components.values() if item["state"] == "valid"}
-    guards = {components[name]["guard"] for name in ("price", "exit")
-              if components[name]["state"] == "valid"}
-    bindings_match = len(q_values) <= 1 and len(chains) <= 1 and len(guards) <= 1
+    bindings_match = len(q_values) <= 1 and len(chains) <= 1
     if "invalid" in states or supervisor["state"] == "invalid" or not bindings_match:
         runtime_state = "attention"
         detail = "A journal is invalid or the component bindings disagree. Inspect local state."

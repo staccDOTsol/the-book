@@ -1,4 +1,4 @@
-"""Canonical receipt and cost-lot tests; all RPC traffic is synthetic."""
+"""Canonical minted-Q and settlement tests; all RPC traffic is synthetic."""
 
 from __future__ import annotations
 
@@ -27,6 +27,9 @@ BUY_POOL = "0x" + "99" * 32
 BUY_TX = "0x" + "aa" * 32
 OPEN_TX = "0x" + "bb" * 32
 EXIT_TX = "0x" + "cc" * 32
+FIRST_EXIT_TX = "0x" + "12" * 32
+SECOND_EXIT_TX = "0x" + "13" * 32
+HARVEST_TX = "0x" + "ee" * 32
 H = {n: "0x" + f"{n:064x}" for n in range(30)}
 
 
@@ -49,48 +52,71 @@ def event(address: str, topics: list[str], types: list[str], values: list,
 
 class FakeRpc:
     def __init__(self):
-        buy_input = report.SELECTOR_BUY_Q + encode(["uint256", "address", "uint64"],
-                                                   [900, VAULT, 100]).hex()
         self.transactions = {
-            BUY_TX: {"hash": BUY_TX, "blockHash": H[3], "from": OWNER,
-                     "to": BUYER, "value": hex(1000), "input": buy_input},
             OPEN_TX: {"hash": OPEN_TX, "blockHash": H[5], "from": OWNER,
                       "to": Q, "value": "0x0", "input": "0x"},
             EXIT_TX: {"hash": EXIT_TX, "blockHash": H[10], "from": OWNER,
                       "to": Q, "value": "0x0", "input": "0x"},
+            FIRST_EXIT_TX: {"hash": FIRST_EXIT_TX, "blockHash": H[8], "from": OWNER,
+                            "to": Q, "value": "0x0", "input": "0x"},
+            SECOND_EXIT_TX: {"hash": SECOND_EXIT_TX, "blockHash": H[9], "from": OWNER,
+                             "to": Q, "value": "0x0", "input": "0x"},
         }
-        self.logs = [
-            event(Q, [report.TRANSFER, addr(BUYER), addr(VAULT)],
-                  ["uint256"], [1000], 3, BUY_TX, 0),
-            event(BUYER, [report.QUOTE_BOUGHT, addr(VAULT), BUY_POOL],
-                  ["uint256", "uint256"], [1000, 1000], 3, BUY_TX, 1),
-            event(POLICY, [report.FEE_SELECTED, addr(TOKEN)],
-                  ["uint24", "uint8", "bool"], [100000, 5, True], 5, OPEN_TX, 0),
-            event(Q, [report.TRANSFER, addr(VAULT), addr(report.POOL_MANAGER)],
-                  ["uint256"], [500], 5, OPEN_TX, 1),
-            event(VAULT, [report.POSITION_OPENED, addr(TOKEN), POOL, word(1)],
-                  ["uint24", "uint256"], [100000, 500], 5, OPEN_TX, 2),
+        self.logs = [event(POLICY, [report.FEE_SELECTED, addr(TOKEN)],
+                           ["uint24", "uint8", "bool"], [100000, 5, True], 5, OPEN_TX, 0)]
+        index = 1
+        for tranche in range(3):
+            self.logs.extend([
+                event(Q, [report.TRANSFER, addr(report.ZERO), addr(VAULT)],
+                      ["uint256"], [200], 5, OPEN_TX, index),
+                event(Q, [report.TRANSFER, addr(VAULT), addr(report.POOL_MANAGER)],
+                      ["uint256"], [150], 5, OPEN_TX, index + 1),
+                event(VAULT, [report.POSITION_OPENED, addr(TOKEN), POOL, word(tranche + 1)],
+                      ["uint24", "uint256"], [100000, 150], 5, OPEN_TX, index + 2),
+                event(Q, [report.TRANSFER, addr(VAULT), addr(report.ZERO)],
+                      ["uint256"], [50], 5, OPEN_TX, index + 3),
+                event(Q, [report.OPEN_TRANCHE_MINTED, addr(TOKEN), word(tranche)],
+                      ["uint256", "uint256"], [200, 150], 5, OPEN_TX, index + 4),
+            ])
+            index += 5
+        self.logs.extend([
+            event(Q, [report.OPEN_MINTED, addr(TOKEN)],
+                  ["uint256", "uint256"], [600, 450], 5, OPEN_TX, index),
             event(report.POOL_MANAGER, [report.SWAP, POOL, addr(OWNER)],
                   ["int128", "int128", "uint160", "uint128", "int24", "uint24"],
                   [10, -5, 1 << 96, 1000, 0, 100000], 7, "0x" + "dd" * 32, 0),
+        ])
+        for block, tx_hash in ((8, FIRST_EXIT_TX), (9, SECOND_EXIT_TX)):
+            self.logs.extend([
+                event(VAULT, [report.POSITION_SETTLED, addr(TOKEN)],
+                      ["uint256"] * 4, [10, 100, 100, 150], block, tx_hash, 0),
+                event(ROUTER, [report.EXIT_SETTLED, addr(TOKEN)],
+                      ["uint256"] * 6, [10, 100, 50, 150, 25, 25], block, tx_hash, 1),
+                event(Q, [report.TRANSFER, addr(ROUTER), addr(report.ZERO)],
+                      ["uint256"], [150], block, tx_hash, 2),
+            ])
+        self.logs.extend([
             event(VAULT, [report.POSITION_SETTLED, addr(TOKEN)],
-                  ["uint256"] * 4, [10, 300, 800, 400], 10, EXIT_TX, 0),
+                  ["uint256"] * 4, [10, 100, 800, 400], 10, EXIT_TX, 0),
             event(ROUTER, [report.EXIT_SETTLED, addr(TOKEN)],
-                  ["uint256"] * 6, [10, 800, 100, 400, 200, 200], 10, EXIT_TX, 1),
+                  ["uint256"] * 6, [10, 800, 300, 400, 200, 200], 10, EXIT_TX, 1),
             event(Q, [report.TRANSFER, addr(ROUTER), addr(report.ZERO)],
                   ["uint256"], [400], 10, EXIT_TX, 2),
             event(Q, [report.PENDING, addr(TOKEN)],
                   ["uint64"], [100000], 10, EXIT_TX, 3),
-        ]
+            event(Q, [report.ALL_POSITIONS_EXITED, addr(TOKEN)],
+                  [], [], 10, EXIT_TX, 4),
+        ])
         self.receipts = {}
         for tx_hash, tx in self.transactions.items():
-            block = {BUY_TX: 3, OPEN_TX: 5, EXIT_TX: 10}[tx_hash]
+            block = {OPEN_TX: 5, FIRST_EXIT_TX: 8, SECOND_EXIT_TX: 9,
+                     EXIT_TX: 10}[tx_hash]
             self.receipts[tx_hash] = {"transactionHash": tx_hash,
                                       "blockNumber": hex(block), "blockHash": H[block],
                                       "status": "0x1", "logs": [row for row in self.logs
                                                              if row["transactionHash"] == tx_hash],
                                       "gasUsed": "0x186a0", "effectiveGasPrice": "0x3b9aca00"}
-        swap = self.logs[5]
+        swap = next(item for item in self.logs if item["topics"][0] == report.SWAP)
         self.receipts[swap["transactionHash"]] = {
             "transactionHash": swap["transactionHash"], "blockNumber": "0x7",
             "blockHash": H[7], "status": "0x1", "logs": [swap],
@@ -188,71 +214,87 @@ class FeeReporterTests(unittest.TestCase):
         with self.assertRaisesRegex(report.ReportError, "reorged"):
             report.scan_once(rpc, binding(), state, 1, 100, 2, 2)
 
-    def test_receipt_authenticated_buy_and_exit_remain_non_reportable_without_gas_audit(self):
+    def test_receipt_authenticated_three_mints_and_exit(self):
         rpc = FakeRpc()
         row = report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
-        self.assertEqual(row["actualEthQCostWei"], "500")
-        self.assertEqual(row["recipientCashEthWei"], "400")
+        self.assertEqual(row["qMintedWei"], "600")
+        self.assertEqual(row["qSpentWei"], "450")
+        self.assertEqual(row["qUnusedBurnedAtOpenWei"], "150")
+        self.assertEqual(row["positionTokenIds"], [1, 2, 3])
+        self.assertEqual(row["recipientCashEthWei"], "500")
         self.assertEqual(row["customPoolSwapCount"], 1)
         self.assertEqual(row["customPoolQInWei"], "10")
         self.assertEqual(row["customPoolXOutWei"], "5")
-        self.assertEqual(row["qBurnedWei"], "400")
-        self.assertEqual(len(row["knownReceipts"]), 3)
+        self.assertEqual(row["qBurnedWei"], "700")
+        self.assertEqual(len(row["positionExits"]), 3)
+        self.assertEqual(len(row["settlementBurns"]), 3)
+        self.assertEqual(len(row["knownReceipts"]), 4)
+        self.assertTrue(row["grossMarkEvidenceComplete"])
         self.assertFalse(row["reportable"])
         self.assertFalse(row["gasComplete"])
 
-    def test_unknown_q_inflow_censors_exact_cost(self):
+    def test_missing_tranche_mint_event_blocks_feedback(self):
         rpc = FakeRpc()
-        gift = event(Q, [report.TRANSFER, addr(OWNER), addr(VAULT)],
-                     ["uint256"], [600], 2, "0x" + "ee" * 32, 0)
-        rpc.logs.insert(0, gift)
-        rpc.receipts[gift["transactionHash"]] = {
-            "transactionHash": gift["transactionHash"], "blockNumber": "0x2",
-            "blockHash": H[2], "status": "0x1", "logs": [gift],
-            "gasUsed": "0x1", "effectiveGasPrice": "0x1"}
-        rpc.transactions[gift["transactionHash"]] = {
-            "hash": gift["transactionHash"], "blockHash": H[2], "from": OWNER,
-            "to": Q, "value": "0x0", "input": "0x"}
-        row = report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
-        self.assertIsNone(row["actualEthQCostWei"])
-        self.assertIn("entry Q spent from unpriced or unexplained inflow", row["costGaps"])
-        self.assertFalse(row["reportable"])
+        missing = next(item for item in rpc.logs if item["topics"][0] == report.OPEN_TRANCHE_MINTED)
+        rpc.logs.remove(missing)
+        rpc.receipts[OPEN_TX]["logs"].remove(missing)
+        with self.assertRaisesRegex(report.ReportError, "three tranche mint events"):
+            report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
 
-    def test_wrong_owner_buyer_pool_does_not_create_cost_basis(self):
+    def test_unreconciled_mint_transfer_blocks_feedback(self):
         rpc = FakeRpc()
-        rpc.logs[1]["topics"][2] = "0x" + "ef" * 32
-        row = report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
-        self.assertIsNone(row["actualEthQCostWei"])
-        self.assertIn("entry Q spent from unpriced or unexplained inflow", row["costGaps"])
+        minted = next(item for item in rpc.logs if item["topics"][0] == report.TRANSFER and
+                      item["topics"][1] == addr(report.ZERO))
+        minted["data"] = "0x" + encode(["uint256"], [199]).hex()
+        with self.assertRaisesRegex(report.ReportError, "Transfers do not reconcile"):
+            report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
 
-    def test_non_hookless_position_metadata_is_rejected(self):
+    def test_tranches_cannot_use_different_pool_ids(self):
         rpc = FakeRpc()
-        original = rpc.call
-        def changed(method, params):
-            if method == "eth_call" and params[0]["data"].lower().startswith(report.EXEC_POSITIONS):
-                return "0x" + encode(
-                    ["uint256", "bytes32", "uint24", "int24", "int24", "int24", "bool",
-                     "bool", "uint256", "uint256", "uint256"],
-                    [1, bytes.fromhex(("0x" + "ff" * 32)[2:]), 100000, 10,
-                     -100, 100, False, True, 500, 10, 300]).hex()
-            return original(method, params)
-        rpc.call = changed
-        with self.assertRaisesRegex(report.ReportError, "zero-hook"):
+        opened = [item for item in rpc.logs if item["topics"][0] == report.POSITION_OPENED]
+        opened[1]["topics"][2] = "0x" + "ff" * 32
+        with self.assertRaisesRegex(report.ReportError, "one pool"):
             report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
 
     def test_noncanonical_receipt_blocks_accounting(self):
         rpc = FakeRpc()
-        rpc.receipts[BUY_TX]["blockHash"] = H[4]
+        rpc.receipts[OPEN_TX]["blockHash"] = H[4]
         with self.assertRaisesRegex(report.ReportError, "noncanonical"):
             report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
 
     def test_router_payout_mismatch_blocks_accounting(self):
         rpc = FakeRpc()
-        router = rpc.logs[7]
+        router = next(item for item in rpc.logs if item["topics"][0] == report.EXIT_SETTLED)
         router["data"] = "0x" + encode(["uint256"] * 6,
                                           [10, 800, 100, 400, 199, 200]).hex()
         with self.assertRaisesRegex(report.ReportError, "do not reconcile"):
             report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
+
+    def test_interim_harvest_cash_and_burn_are_included_once(self):
+        rpc = FakeRpc()
+        rows = [
+            event(VAULT, [report.FEES_SETTLED, addr(TOKEN)],
+                  ["uint256"] * 4, [2, 30, 80, 40], 8, HARVEST_TX, 0),
+            event(ROUTER, [report.EXIT_SETTLED, addr(TOKEN)],
+                  ["uint256"] * 6, [2, 80, 10, 40, 20, 20], 8, HARVEST_TX, 1),
+            event(Q, [report.TRANSFER, addr(ROUTER), addr(report.ZERO)],
+                  ["uint256"], [40], 8, HARVEST_TX, 2),
+        ]
+        rpc.logs.extend(rows)
+        rpc.transactions[HARVEST_TX] = {"hash": HARVEST_TX, "blockHash": H[8],
+                                        "from": OWNER, "to": Q, "value": "0x0", "input": "0x"}
+        rpc.receipts[HARVEST_TX] = {"transactionHash": HARVEST_TX,
+                                     "blockNumber": "0x8", "blockHash": H[8],
+                                     "status": "0x1", "logs": rows,
+                                     "gasUsed": "0x186a0", "effectiveGasPrice": "0x3b9aca00"}
+        row = report.collect_exit(rpc, binding(), TOKEN, pending(), 1, 18, 100)
+        self.assertEqual(row["recipientCashEthWei"], "540")
+        self.assertEqual(row["qBurnedWei"], "740")
+        self.assertEqual(row["exitRecipientCashEthWei"], "400")
+        self.assertEqual(row["exitQBurnedWei"], "400")
+        self.assertEqual(len(row["interimHarvests"]), 1)
+        self.assertEqual(len(row["settlementBurns"]), 4)
+        self.assertEqual(len(row["knownReceipts"]), 5)
 
     def test_log_query_overflow_fails_closed(self):
         rpc = FakeRpc()

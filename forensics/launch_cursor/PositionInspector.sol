@@ -6,14 +6,15 @@ pragma solidity ^0.8.26;
 /// records entry, so a caller cannot fabricate a range crossing.
 interface IInspectedExecutor {
     function controller() external view returns (address);
-    function inspect(address token) external view returns (
+    function activePositionCount(address token) external view returns (uint8);
+    function inspectTranche(address token, uint8 tranche) external view returns (
         uint160 sqrtPriceX96,
         bool inBand,
         bool atQuoteBoundary,
         bool atTokenBoundary,
         bool enteredBand
     );
-    function markEntered(address token) external;
+    function markEnteredTranche(address token, uint8 tranche) external;
     function previewHarvest(address token) external view returns (uint256 grossEthValue, uint256 estimatedGasUnits);
 }
 
@@ -62,35 +63,38 @@ contract PositionInspector {
     /// by either one-sided boundary produces an exit report.
     function poke(address token) external returns (bool entered, bool exitReady) {
         if (address(cursor) == address(0)) revert NotBound();
-        (
-            uint160 sqrtPriceX96,
-            bool inBand,
-            bool atQuoteBoundary,
-            bool atTokenBoundary,
-            bool wasEntered
-        ) = executor.inspect(token);
-        entered = wasEntered;
-        if (!entered && (inBand || atTokenBoundary)) {
-            executor.markEntered(token);
-            cursor.notifyBandEntered(token);
-            entered = true;
-        } else if (entered) {
-            // Idempotent if the cursor already has the report.
-            cursor.notifyBandEntered(token);
+        uint160 observedPrice;
+        bool observedQuoteBoundary;
+        for (uint8 i; i < 3; ++i) {
+            try executor.inspectTranche(token, i) returns (
+                uint160 sqrtPriceX96, bool inBand, bool atQuoteBoundary,
+                bool atTokenBoundary, bool wasEntered
+            ) {
+                observedPrice = sqrtPriceX96;
+                bool trancheEntered = wasEntered;
+                if (!trancheEntered && (inBand || atTokenBoundary)) {
+                    executor.markEnteredTranche(token, i);
+                    cursor.notifyBandEntered(token);
+                    trancheEntered = true;
+                } else if (trancheEntered) {
+                    cursor.notifyBandEntered(token);
+                }
+                if (trancheEntered) entered = true;
+                if (!exitReady && trancheEntered && (atQuoteBoundary || atTokenBoundary)) {
+                    exitReady = cursor.notifyExitReady(token, atQuoteBoundary);
+                    if (exitReady) observedQuoteBoundary = atQuoteBoundary;
+                }
+            } catch {}
         }
-        if (entered && (atQuoteBoundary || atTokenBoundary)) {
-            exitReady = cursor.notifyExitReady(token, atQuoteBoundary);
-        }
-        emit PositionObserved(token, sqrtPriceX96, entered, exitReady, atQuoteBoundary);
+        emit PositionObserved(token, observedPrice, entered, exitReady, observedQuoteBoundary);
     }
 
-    /// @notice Queue an interim LP-fee claim only when the executor can value
-    /// accrued fees. The executor currently reverts from previewHarvest, so
-    /// this returns false until an executable valuation is implemented.
+    /// @notice Queue a signer-quoted, gas-positive interim LP-fee claim. A
+    /// position may earn fees and then remain active outside its range, so
+    /// this deliberately does not require a current in-band observation.
     function pokeHarvest(address token) external returns (bool queued) {
         if (address(cursor) == address(0)) revert NotBound();
-        (, bool inBand,,, bool enteredBand) = executor.inspect(token);
-        if (!inBand || !enteredBand) return false;
+        if (executor.activePositionCount(token) == 0) return false;
         try executor.previewHarvest(token) returns (uint256 grossEthValue, uint256 estimatedGasUnits) {
             if (grossEthValue != 0 && estimatedGasUnits != 0) {
                 return cursor.notifyHarvestReady(token);

@@ -36,7 +36,9 @@ interface IPonsV2LaunchFactoryCursor {
 /// settlement, and revert on partial or no-op operations. This token does
 /// none of those operations; a no-op executor advances its cursor unsafely.
 interface ILaunchCursorExecutor {
-    function open(address launchToken, uint24 feePips) external;
+    function open(address launchToken, uint24 feePips, uint256[3] calldata mintedQuote)
+        external returns (uint256[3] memory quoteSpent);
+    function activePositionCount(address launchToken) external view returns (uint256);
     /// @notice Must finish LP withdrawal, liquidation, burns, and payouts.
     /// A completed but unvalued exit remains pending for receipt-backed cash
     /// accounting, then is censored after the fixed reporting window if no
@@ -54,32 +56,48 @@ interface ILaunchCursorExecutor {
 }
 
 /// @notice The price keeper supplies a short-lived, independently verified
-/// quote-only mint configuration. The executor is bound to this Q token as its
+/// three-position quote-only configuration. The executor is bound to this Q token as its
 /// controller, so this forwarder is the only normal route to configure it.
 interface ILaunchCursorConfigurator {
     struct OpenConfig {
         uint160 startingSqrtPriceX96;
-        uint128 liquidity;
-        uint128 maxQuoteIn;
+        uint128[3] liquidity;
+        uint128[3] maxQuoteIn;
         int24 tickSpacing;
-        int24 tickLower;
-        int24 tickUpper;
+        int24[3] tickLower;
+        int24[3] tickUpper;
         uint64 deadline;
     }
 
-    function configureOpen(address token, OpenConfig calldata config) external;
+    function configureOpen(address token, bytes calldata encodedPlan) external;
 }
 
 interface ILaunchCursorExitConfigurator {
     struct ExitConfig {
+        uint8 tranche;
         uint128 minTokenOut;
         uint128 minQuoteOut;
         uint256 minEthOut;
         uint256 minQOut;
         uint64 deadline;
+        bool timed;
     }
 
-    function configureExit(address token, ExitConfig calldata config) external;
+    function configureExit(address token, bytes calldata encodedConfig) external;
+}
+
+interface ILaunchCursorHarvestConfigurator {
+    struct HarvestConfig {
+        uint128 minTokenFee;
+        uint128 minQuoteFee;
+        uint256 minEthOut;
+        uint256 minQOut;
+        uint256 grossEthValue;
+        uint32 estimatedGasUnits;
+        uint64 deadline;
+    }
+
+    function configureHarvest(address token, HarvestConfig calldata config) external;
 }
 
 /// @notice Small standalone ERC-20 base with the OpenZeppelin 5-style `_update`
@@ -158,6 +176,13 @@ abstract contract CursorERC20 {
 /// direct EOA transfer attempts at most one action; anyone can also processNext.
 /// It is deliberately not a deployable LP system without the executor.
 contract LaunchCursorToken is CursorERC20 {
+    struct Metadata {
+        string name;
+        string symbol;
+        string description;
+        string imageURI;
+    }
+
     enum Stage {
         None,
         Queued,
@@ -203,6 +228,8 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     address public immutable owner;
+    /// @notice Fixed at construction so the launch image cannot be changed later.
+    string private _metadataURI;
     address public priceConfigurator;
     address public exitConfigurator;
     IPonsV2LaunchFactoryCursor public immutable ponsFactory;
@@ -217,7 +244,9 @@ contract LaunchCursorToken is CursorERC20 {
     uint256 private constant OUTER_TRANSFER_GAS_RESERVE = 50_000;
     uint256 private constant HARVEST_GAS_VALUE_MULTIPLIER = 2;
     uint64 public constant OUTCOME_REPORT_WINDOW = 7 days;
+    uint256 public constant WIND_DOWN_DELAY = 120 minutes;
     uint256 public constant INITIAL_SUPPLY = 1_000_000_000 ether;
+    uint16 public constant OPEN_MINT_BPS = 100;
     uint32 public transferStepGasLimit;
     uint256 public harvestGasPriceCeilingWei;
     bool public automaticEnabled = true;
@@ -251,9 +280,13 @@ contract LaunchCursorToken is CursorERC20 {
 
     event LaunchEnqueued(address indexed token, address indexed curve);
     event StepSucceeded(address indexed token, Step step);
+    event AllPositionsExited(address indexed token);
+    event OpenMinted(address indexed token, uint256 mintedQuote, uint256 quoteSpent);
+    event OpenTrancheMinted(address indexed token, uint8 indexed tranche, uint256 mintedQuote, uint256 quoteSpent);
     event StepFailed(address indexed token, Step step, uint32 failures, uint64 nextAttemptAt);
     event BandEntered(address indexed token);
     event ExitReady(address indexed token, bool allQuote);
+    event WindDownRequested(address indexed token);
     event HarvestReady(address indexed token);
     event HarvestDeferred(address indexed token, uint256 grossEthValue, uint256 estimatedGasUnits, uint64 nextAttemptAt);
     event ReportDeferred(address indexed token);
@@ -264,11 +297,9 @@ contract LaunchCursorToken is CursorERC20 {
     event HeldAssetRescued(address indexed token, uint256 amount);
     event PriceConfiguratorSet(address indexed configurator);
     event ExitConfiguratorSet(address indexed configurator);
-    event OpenPriceConfigured(address indexed token, uint160 sqrtPriceX96, uint128 maxQuoteIn);
-    event ExitBoundConfigured(
-        address indexed token, uint128 minTokenOut, uint128 minQuoteOut,
-        uint256 minEthOut, uint256 minQOut, uint64 deadline
-    );
+    event OpenPriceConfigured(address indexed token, bytes32 indexed planHash);
+    event ExitBoundConfigured(address indexed token, bytes32 indexed configHash);
+    event HarvestBoundConfigured(address indexed token);
     event SkippedEntryRemoved(address indexed token);
     event InternalEndpointSet(address indexed endpoint, bool internalCall);
     event AutomaticSet(bool enabled);
@@ -314,8 +345,7 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     constructor(
-        string memory name_,
-        string memory symbol_,
+        Metadata memory metadata_,
         uint256 initialSupply_,
         address factory_,
         address executor_,
@@ -324,14 +354,18 @@ contract LaunchCursorToken is CursorERC20 {
         uint32 transferStepGasLimit_,
         uint256 harvestGasPriceCeilingWei_,
         address[] memory settlementEndpoints_
-    ) CursorERC20(name_, symbol_) {
+    ) CursorERC20(metadata_.name, metadata_.symbol) {
         if (
             factory_.code.length == 0 || executor_.code.length == 0 ||
             exitNotifier_.code.length == 0 || retryDelaySeconds_ == 0 ||
+            bytes(metadata_.description).length == 0 || bytes(metadata_.imageURI).length == 0 ||
             initialSupply_ != INITIAL_SUPPLY ||
-            transferStepGasLimit_ < 100_000 || transferStepGasLimit_ > 3_000_000 ||
+            transferStepGasLimit_ < 100_000 || transferStepGasLimit_ > 10_000_000 ||
             harvestGasPriceCeilingWei_ == 0
         ) revert BadConfiguration();
+        _metadataURI = _buildTokenURI(
+            metadata_.name, metadata_.symbol, metadata_.description, metadata_.imageURI
+        );
         owner = msg.sender;
         priceConfigurator = msg.sender;
         exitConfigurator = msg.sender;
@@ -351,6 +385,104 @@ contract LaunchCursorToken is CursorERC20 {
             emit InternalEndpointSet(settlementEndpoints_[i], true);
         }
         _update(address(0), msg.sender, initialSupply_);
+    }
+
+    /// @notice Uniswap-compatible ERC-20 metadata URI with an embedded JSON document.
+    function tokenURI() external view returns (string memory) {
+        return _metadataURI;
+    }
+
+    /// @dev A reverting self-call makes issuance and the entire executor open
+    /// one atomic attempt, even though the scheduler catches open failures.
+    function executeOpenWithMint(address token, uint24 feePips) external {
+        if (
+            msg.sender != address(this) || !_processing ||
+            _processingStep != Step.Open || _processingToken != token ||
+            launches[token].stage != Stage.Queued || !launches[token].openConfigured
+        ) revert BadConfiguration();
+        uint256 supplyBefore = totalSupply;
+        uint256 executorBalanceBefore = balanceOf[address(executor)];
+        uint256[3] memory mintedQuote;
+        uint256 totalMinted;
+        for (uint8 i; i < 3; ++i) {
+            // Each mint sees supply after the prior mint. The executor burns
+            // every tranche's unused amount before this call completes.
+            uint256 amount = totalSupply * OPEN_MINT_BPS / 10_000;
+            if (amount == 0) revert BadConfiguration();
+            mintedQuote[i] = amount;
+            totalMinted += amount;
+            _update(address(0), address(executor), amount);
+        }
+        uint256[3] memory quoteSpent = executor.open(token, feePips, mintedQuote);
+        uint256 totalSpent;
+        for (uint8 i; i < 3; ++i) {
+            uint256 spent = quoteSpent[i];
+            if (spent == 0 || spent > mintedQuote[i]) revert BadConfiguration();
+            totalSpent += spent;
+            emit OpenTrancheMinted(token, i, mintedQuote[i], spent);
+        }
+        if (
+            balanceOf[address(executor)] != executorBalanceBefore ||
+            totalSupply != supplyBefore + totalSpent
+        ) revert BadConfiguration();
+        emit OpenMinted(token, totalMinted, totalSpent);
+    }
+
+    function _buildTokenURI(
+        string memory name_, string memory symbol_, string memory description_, string memory imageURI_
+    ) private pure returns (string memory) {
+        bytes memory json = abi.encodePacked(
+            '{"name":"', _jsonEscape(name_),
+            '","symbol":"', _jsonEscape(symbol_),
+            '","description":"', _jsonEscape(description_),
+            '","image":"', _jsonEscape(imageURI_), '"}'
+        );
+        return string.concat("data:application/json;base64,", _base64(json));
+    }
+
+    function _jsonEscape(string memory value) private pure returns (string memory) {
+        bytes memory input = bytes(value);
+        uint256 outputLength;
+        for (uint256 i; i < input.length; ++i) {
+            uint8 c = uint8(input[i]);
+            outputLength += c < 0x20 ? 6 : (c == 0x22 || c == 0x5c ? 2 : 1);
+        }
+        bytes memory output = new bytes(outputLength);
+        bytes16 hexDigits = "0123456789abcdef";
+        uint256 j;
+        for (uint256 i; i < input.length; ++i) {
+            uint8 c = uint8(input[i]);
+            if (c < 0x20) {
+                output[j++] = 0x5c;
+                output[j++] = 0x75;
+                output[j++] = 0x30;
+                output[j++] = 0x30;
+                output[j++] = hexDigits[c >> 4];
+                output[j++] = hexDigits[c & 0x0f];
+            } else if (c == 0x22 || c == 0x5c) {
+                output[j++] = 0x5c;
+                output[j++] = bytes1(c);
+            } else {
+                output[j++] = bytes1(c);
+            }
+        }
+        return string(output);
+    }
+
+    function _base64(bytes memory input) private pure returns (string memory) {
+        bytes memory alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        bytes memory output = new bytes(4 * ((input.length + 2) / 3));
+        uint256 j;
+        for (uint256 i; i < input.length; i += 3) {
+            uint256 chunk = uint256(uint8(input[i])) << 16;
+            if (i + 1 < input.length) chunk |= uint256(uint8(input[i + 1])) << 8;
+            if (i + 2 < input.length) chunk |= uint256(uint8(input[i + 2]));
+            output[j++] = alphabet[(chunk >> 18) & 0x3f];
+            output[j++] = alphabet[(chunk >> 12) & 0x3f];
+            output[j++] = i + 1 < input.length ? alphabet[(chunk >> 6) & 0x3f] : bytes1(0x3d);
+            output[j++] = i + 2 < input.length ? alphabet[chunk & 0x3f] : bytes1(0x3d);
+        }
+        return string(output);
     }
 
     /// @dev The automated owner watcher only enqueues. This contract cannot
@@ -431,41 +563,68 @@ contract LaunchCursorToken is CursorERC20 {
         emit ExitConfiguratorSet(configurator);
     }
 
-    /// @notice Commits a short-lived price, ticks, liquidity and spend cap.
-    /// The keeper must independently verify executable X/Q price and that
-    /// enough valuable Q is in the vault; this prototype has no price oracle.
-    function configureOpen(address token, ILaunchCursorConfigurator.OpenConfig calldata config)
+    /// @notice Commits a short-lived price, three ranges, liquidity and spend
+    /// caps. Each cap is checked against its own 1%-of-current-supply mint
+    /// during the later atomic open attempt.
+    function configureOpen(address token, bytes calldata encodedPlan)
         external onlyPriceConfigurator whenIdle
     {
         Launch storage launch = launches[token];
-        if (launch.stage != Stage.Queued) revert BadLaunch();
-        ILaunchCursorConfigurator(address(executor)).configureOpen(token, config);
+        if (launch.stage != Stage.Queued || encodedPlan.length == 0) revert BadLaunch();
+        ILaunchCursorConfigurator(address(executor)).configureOpen(token, encodedPlan);
         if (!launch.openConfigured) {
             launch.openConfigured = true;
             _entries.push(token);
         }
-        emit OpenPriceConfigured(token, config.startingSqrtPriceX96, config.maxQuoteIn);
+        emit OpenPriceConfigured(token, keccak256(encodedPlan));
     }
 
-    /// @notice Commit short-lived LP and swap minima for a queued boundary
-    /// exit. The executor verifies the live one-sided boundary on execution.
-    function configureExit(address token, ILaunchCursorExitConfigurator.ExitConfig calldata config)
+    /// @notice Commit short-lived LP and swap minima for a queued boundary or
+    /// timed exit. Timed configurations are unavailable before open+120m.
+    function configureExit(address token, bytes calldata encodedConfig)
         external onlyExitConfigurator whenIdle
     {
         Launch storage launch = launches[token];
-        if (launch.stage != Stage.Active || !launch.exitReady) revert BadLaunch();
-        ILaunchCursorExitConfigurator(address(executor)).configureExit(token, config);
-        emit ExitBoundConfigured(
-            token, config.minTokenOut, config.minQuoteOut,
-            config.minEthOut, config.minQOut, config.deadline
-        );
+        if (launch.stage != Stage.Active || !launch.exitReady || encodedConfig.length == 0) revert BadLaunch();
+        ILaunchCursorExitConfigurator.ExitConfig memory config =
+            abi.decode(encodedConfig, (ILaunchCursorExitConfigurator.ExitConfig));
+        if (config.timed && block.timestamp < uint256(launch.activeAt) + WIND_DOWN_DELAY) revert BadLaunch();
+        ILaunchCursorExitConfigurator(address(executor)).configureExit(token, encodedConfig);
+        emit ExitBoundConfigured(token, keccak256(encodedConfig));
     }
 
-    /// @notice Record a receipt-backed cash return for an already completed
-    /// exit. The price-configurator signer is trusted to verify the Q
-    /// acquisition lots, recipient payout, and strategy-paid gas in the
-    /// evidence identified by `evidenceHash`. The burn is a separate noncash
-    /// outcome. This contract cannot verify historical offchain accounting.
+    /// @notice After two hours, anyone may queue liquidation of an active
+    /// launch even if none of its three bands was ever entered.
+    function requestWindDown(address token) external whenIdle returns (bool queued) {
+        Launch storage launch = launches[token];
+        if (launch.stage != Stage.Active || block.timestamp < uint256(launch.activeAt) + WIND_DOWN_DELAY) {
+            revert BadLaunch();
+        }
+        if (launch.exitReady || _pendingByToken[token].exit) return false;
+        if (block.timestamp > type(uint64).max) revert BadConfiguration();
+        launch.exitReady = true;
+        launch.quoteBoundary = false;
+        launch.nextActionAt = uint64(block.timestamp);
+        _heapPush(_exits, token, false);
+        emit WindDownRequested(token);
+        return true;
+    }
+
+    /// @notice The exit signer supplies a bounded interim fee claim for an
+    /// active position. The executor validates the position and live minima.
+    function configureHarvest(address token, ILaunchCursorHarvestConfigurator.HarvestConfig calldata config)
+        external onlyExitConfigurator whenIdle
+    {
+        if (launches[token].stage != Stage.Active) revert BadLaunch();
+        ILaunchCursorHarvestConfigurator(address(executor)).configureHarvest(token, config);
+        emit HarvestBoundConfigured(token);
+    }
+
+    /// @notice Record a receipt-backed gross mark-to-market ETH-equivalent
+    /// estimate after the final tranche exits. The price configurator checks
+    /// recipient ETH, Q burned at exits and interim harvests, and net Q minted
+    /// into the three LPs against historical executable Q/ETH quotes. Gas is
+    /// excluded. This contract cannot verify that offchain valuation itself.
     function reportExitedOutcome(address token, int32 netReturnBps, bytes32 evidenceHash)
         external onlyPriceConfigurator whenIdle
     {
@@ -482,7 +641,7 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     /// @notice After the fixed evidence window, finalize a completed exit
-    /// whose actual Q cost basis or attributable gas could not be proven.
+    /// whose receipts or historical Q/ETH valuation could not be proven.
     /// It remains counted as censored, never as a zero-return closed pool.
     function censorExpiredOutcome(address token) external onlyPriceConfigurator whenIdle {
         uint64 deadline = outcomeDeadline[token];
@@ -516,8 +675,9 @@ contract LaunchCursorToken is CursorERC20 {
 
     /// @notice Report the first one-sided boundary reached *after* entry.
     /// `allQuote=true` denotes Q only; false denotes launch token only. The
-    /// notifier must verify this from its own position/tick state. No timer
-    /// can make an exit ready. Repeated reports never reset retry backoff.
+    /// notifier must verify this from its own position/tick state. Separately,
+    /// anyone may request winddown at open+120m without entry. Repeated
+    /// reports never reset retry backoff.
     function notifyExitReady(address token, bool allQuote) external onlyNotifier returns (bool recorded) {
         Launch storage launch = launches[token];
         PendingReport storage pending = _pendingByToken[token];
@@ -547,9 +707,7 @@ contract LaunchCursorToken is CursorERC20 {
         PendingReport storage pending = _pendingByToken[token];
         bool rearmingCurrentHarvest = _processing && _processingToken == token && _processingStep == Step.Harvest;
         if (
-            !_reportable(launch, token) ||
-            (launch.enteredBandAt == 0 && pending.bandAt == 0) ||
-            launch.exitReady || pending.exit ||
+            launch.stage != Stage.Active ||
             (launch.harvestReady && !rearmingCurrentHarvest) || pending.harvest
         ) return false;
         if (_processing || pending.queued) {
@@ -600,7 +758,7 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     function setTransferStepGasLimit(uint32 gasLimit) external onlyOwner whenIdle {
-        if (gasLimit < 100_000 || gasLimit > 3_000_000) revert BadConfiguration();
+        if (gasLimit < 100_000 || gasLimit > 10_000_000) revert BadConfiguration();
         transferStepGasLimit = gasLimit;
         emit TransferStepGasLimitSet(gasLimit);
     }
@@ -723,7 +881,7 @@ contract LaunchCursorToken is CursorERC20 {
         }
         if (
             step == Step.Harvest &&
-            (launches[token].stage != Stage.Active || launches[token].exitReady || !launches[token].harvestReady)
+            (launches[token].stage != Stage.Active || !launches[token].harvestReady)
         ) {
             if (source == 3) _harvests.pop();
             else _heapPop(_harvestRetries, true);
@@ -781,7 +939,7 @@ contract LaunchCursorToken is CursorERC20 {
                 // Reserve once, before the executor call. If open reverts,
                 // this policy assignment survives the caught failure.
                 uint24 feePips = feePolicy.selectFee(token);
-                try executor.open{gas: gasLimit}(token, feePips) { executed = true; } catch {}
+                try this.executeOpenWithMint{gas: gasLimit}(token, feePips) { executed = true; } catch {}
             } else if (step == Step.Exit) {
                 try executor.exit{gas: gasLimit}(token) returns (int32 observedBps, bool comparable_) {
                     netReturnBps = observedBps;
@@ -793,22 +951,29 @@ contract LaunchCursorToken is CursorERC20 {
             }
         }
         if (executed) {
+            bool finalExit;
             if (step == Step.Exit) {
-                // A failed policy write reverts this scheduler subcall and
-                // therefore the executor exit; no completed exit is lost.
-                if (comparable) {
-                    if (netReturnBps > 10_000) netReturnBps = 10_000;
-                    if (netReturnBps < -10_000) netReturnBps = -10_000;
-                    feePolicy.recordClosed(token, netReturnBps);
-                } else {
-                    uint64 deadline = uint64(block.timestamp) + OUTCOME_REPORT_WINDOW;
-                    outcomeDeadline[token] = deadline;
-                    emit FeeOutcomePending(token, deadline);
+                uint256 remaining = executor.activePositionCount(token);
+                if (remaining > 3) revert BadConfiguration();
+                finalExit = remaining == 0;
+                if (finalExit) {
+                    // A failed policy write reverts this scheduler subcall and
+                    // therefore the final executor exit.
+                    if (comparable) {
+                        if (netReturnBps > 10_000) netReturnBps = 10_000;
+                        if (netReturnBps < -10_000) netReturnBps = -10_000;
+                        feePolicy.recordClosed(token, netReturnBps);
+                    } else {
+                        uint64 deadline = uint64(block.timestamp) + OUTCOME_REPORT_WINDOW;
+                        outcomeDeadline[token] = deadline;
+                        emit FeeOutcomePending(token, deadline);
+                    }
                 }
             }
-            _onSuccess(token, step, source);
+            _onSuccess(token, step, source, finalExit);
             succeeded = true;
             emit StepSucceeded(token, step);
+            if (finalExit) emit AllPositionsExited(token);
         } else {
             _onFailure(token, step, source);
         }
@@ -847,7 +1012,7 @@ contract LaunchCursorToken is CursorERC20 {
             _heapPush(_exits, token, false);
             emit ExitReady(token, pending.quoteBoundary);
         }
-        if (pending.harvest && launch.enteredBandAt != 0 && !launch.exitReady && !launch.harvestReady) {
+        if (pending.harvest && !launch.harvestReady) {
             launch.harvestReady = true;
             _harvests.push(token);
             emit HarvestReady(token);
@@ -884,7 +1049,7 @@ contract LaunchCursorToken is CursorERC20 {
         emit HarvestDeferred(token, grossEthValue, estimatedGasUnits, launch.nextHarvestAt);
     }
 
-    function _onSuccess(address token, Step step, uint8 source) private {
+    function _onSuccess(address token, Step step, uint8 source, bool finalExit) private {
         Launch storage launch = launches[token];
         if (step == Step.Harvest) {
             if (source == 3) _harvests.pop();
@@ -896,15 +1061,25 @@ contract LaunchCursorToken is CursorERC20 {
             if (source == 1) _heapPop(_entryRetries, false);
             else _entries.pop();
             launch.stage = Stage.Active;
+            if (block.timestamp > type(uint64).max) revert BadConfiguration();
             launch.activeAt = uint64(block.timestamp);
         } else {
             _heapPop(_exits, false);
-            launch.stage = Stage.Exited;
+            launch.stage = finalExit ? Stage.Exited : Stage.Active;
+            launch.exitReady = false;
+            launch.quoteBoundary = false;
             launch.harvestReady = false;
+            if (!finalExit && block.timestamp >= uint256(launch.activeAt) + WIND_DOWN_DELAY) {
+                if (block.timestamp > type(uint64).max) revert BadConfiguration();
+                launch.exitReady = true;
+                launch.nextActionAt = uint64(block.timestamp);
+                _heapPush(_exits, token, false);
+                emit WindDownRequested(token);
+            }
         }
         if (step != Step.Harvest) {
             launch.failures = 0;
-            launch.nextActionAt = 0;
+            if (step != Step.Exit || finalExit || !launch.exitReady) launch.nextActionAt = 0;
         }
     }
 
@@ -934,9 +1109,9 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     function _less(address a, address b, bool harvestHeap) private view returns (bool) {
-        uint64 at = harvestHeap ? launches[a].nextHarvestAt : launches[a].nextActionAt;
-        uint64 bt = harvestHeap ? launches[b].nextHarvestAt : launches[b].nextActionAt;
-        return at < bt || (at == bt && a < b);
+        uint64 aTime = harvestHeap ? launches[a].nextHarvestAt : launches[a].nextActionAt;
+        uint64 bTime = harvestHeap ? launches[b].nextHarvestAt : launches[b].nextActionAt;
+        return aTime < bTime || (aTime == bTime && a < b);
     }
 
     function _heapPush(address[] storage heap, address token, bool harvestHeap) private {

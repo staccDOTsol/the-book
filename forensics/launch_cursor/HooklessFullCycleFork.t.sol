@@ -5,7 +5,6 @@ import {HooklessLPExecutor, HooklessTickMath} from "./HooklessLPExecutor.sol";
 import {LaunchCursorToken, ILaunchCursorConfigurator, ILaunchCursorExitConfigurator} from "./LaunchCursorToken.sol";
 import {PositionInspector} from "./PositionInspector.sol";
 import {OpenPriceGuard, OpenPriceFullMath} from "./OpenPriceGuard.sol";
-import {OpenExecutableDepthGuard} from "./OpenExecutableDepthGuard.sol";
 import {ExitSettlementRouter} from "./ExitSettlementRouter.sol";
 import {ExitRouterForkWETH, ExitRouterForkFanout} from "./ExitSettlementRouterFork.t.sol";
 import {DepthForkPoolSeeder} from "./OpenExecutableDepthGuardFork.t.sol";
@@ -20,6 +19,7 @@ import {StaticNextPoolFee} from "./StaticNextPoolFee.sol";
 interface IFullCycleVm {
     function createSelectFork(string calldata rpcUrl) external returns (uint256);
     function deal(address account, uint256 amount) external;
+    function warp(uint256 timestamp) external;
 }
 
 interface IFullCycleManager is IHooklessQuoteBuyPoolManager {
@@ -119,7 +119,6 @@ contract HooklessFullCycleForkTest {
     address private constant POSITION_MANAGER = 0x58daec3116aae6D93017bAAea7749052E8a04fA7;
     address private constant STATE_VIEW = 0xF3334192D15450CdD385c8B70e03f9A6bD9E673b;
     address private constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-    address private constant QUOTER = 0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94;
     address private constant ACTIVE_X = 0xeB765696eE5905ce1D06D72280dEFB2cE426115d;
     address private constant ACTIVE_CURVE = 0x9d4bcCd80332ba9CcCC75657B560Bb89265462aD;
     address payable private constant DEV = payable(address(0xD00D));
@@ -179,11 +178,11 @@ contract HooklessFullCycleForkTest {
         require(liquidity > 0 && liquidity <= type(uint128).max, "bad liquidity");
         c = ILaunchCursorConfigurator.OpenConfig({
             startingSqrtPriceX96: spot.referenceSqrtPriceX96(ACTIVE_X),
-            liquidity: uint128(liquidity),
-            maxQuoteIn: uint128(targetQ),
+            liquidity: [uint128(liquidity), uint128(liquidity), uint128(liquidity)],
+            maxQuoteIn: [uint128(targetQ), uint128(targetQ), uint128(targetQ)],
             tickSpacing: 60,
-            tickLower: lower,
-            tickUpper: upper,
+            tickLower: [lower, lower, lower],
+            tickUpper: [upper, upper, upper],
             deadline: uint64(block.timestamp + 120)
         });
     }
@@ -198,14 +197,13 @@ contract HooklessFullCycleForkTest {
         endpoints[0] = POOL_MANAGER;
         endpoints[1] = address(s.swapper);
         s.q = new LaunchCursorToken(
-            "Full Cycle Q",
-            "Q",
+            LaunchCursorToken.Metadata("Full Cycle Q", "Q", "Full cycle test quote", "ipfs://full-cycle-q"),
             1_000_000_000 ether,
             FACTORY,
             address(s.executor),
             address(s.inspector),
             30,
-            3_000_000,
+            9_000_000,
             1 gwei,
             endpoints
         );
@@ -216,22 +214,18 @@ contract HooklessFullCycleForkTest {
         vm.deal(address(seeder), 100 ether);
         seeder.seed();
         s.spot = new OpenPriceGuard(FACTORY, STATE_VIEW, address(s.q), 2_500, 25, 1_000);
-        s.executor.bindPriceGuard(address(s.spot));
         s.weth = new ExitRouterForkWETH();
         s.fanout = new ExitRouterForkFanout();
         ExitSettlementRouter router = new ExitSettlementRouter(
             address(s.executor), address(s.q), address(s.weth), address(s.fanout), DEV, 2_500, 25
         );
         s.executor.bindSettlementRouter(address(router));
-        OpenExecutableDepthGuard depth =
-            new OpenExecutableDepthGuard(address(s.executor), address(s.spot), address(router), QUOTER, 1_500);
-        s.executor.bindDepthGuard(address(depth));
         require(s.q.transfer(address(s.executor), 10 ether), "vault funding");
     }
 
     function _openAndCross(Setup memory s) private {
         s.q.enqueue(ACTIVE_X);
-        s.q.configureOpen(ACTIVE_X, _openConfig(s.spot, address(s.q)));
+        s.q.configureOpen(ACTIVE_X, abi.encode(_openConfig(s.spot, address(s.q))));
         (bool attemptedOpen, bool opened) = s.q.processNext();
         require(attemptedOpen && opened, "real v4 mint failed");
         (,, bool qBoundary,,) = s.executor.inspect(ACTIVE_X);
@@ -243,47 +237,73 @@ contract HooklessFullCycleForkTest {
         (uint24 feePips,,) = s.q.feePolicy().assignments(ACTIVE_X);
         (uint256 xSpent, uint256 qOut) = s.swapper.sellX(ACTIVE_X, address(s.q), feePips, 60, xBought);
         require(xSpent > 0 && qOut > 0, "X/Q swap failed");
-        s.executor.markEntered(ACTIVE_X);
-        (,, bool stillQBoundary, bool xBoundary, bool entered) = s.executor.inspect(ACTIVE_X);
-        require(!stillQBoundary && xBoundary && entered, "position did not reach all-X boundary");
         (bool reportedEntry, bool exitReady) = s.inspector.poke(ACTIVE_X);
         require(reportedEntry && exitReady, "exit not queued");
+        for (uint8 i; i < 3; ++i) {
+            (,, bool stillQBoundary, bool xBoundary, bool entered) = s.executor.inspectTranche(ACTIVE_X, i);
+            require(!stillQBoundary && xBoundary && entered, "tranche did not reach all-X boundary");
+        }
     }
 
     function _exitAndAssert(Setup memory s) private {
-        s.q
-            .configureExit(
-                ACTIVE_X,
-                ILaunchCursorExitConfigurator.ExitConfig({
-                    minTokenOut: 1, minQuoteOut: 0, minEthOut: 1, minQOut: 1, deadline: uint64(block.timestamp + 60)
-                })
-            );
         uint256 supplyBefore = s.q.totalSupply();
         uint256 fanoutBefore = s.weth.balanceOf(address(s.fanout));
         uint256 devBefore = DEV.balance;
-        uint256 gasBefore = gasleft();
-        (bool attemptedExit, bool exited) = s.q.processNext();
-        uint256 exitGas = gasBefore - gasleft();
-        emit log_named_uint("full real-v4/router exit processNext gas", exitGas);
-        require(attemptedExit && exited, "integrated real LP exit failed");
-        require(exitGas < 3_000_000, "cursor exit gas cap exceeded");
+        for (uint8 i; i < 3; ++i) {
+            if (i != 0) {
+                (, bool exitReady) = s.inspector.poke(ACTIVE_X);
+                require(exitReady, "next tranche exit not queued");
+            }
+            s.q.configureExit(ACTIVE_X, abi.encode(ILaunchCursorExitConfigurator.ExitConfig({
+                tranche: i, minTokenOut: 1, minQuoteOut: 0, minEthOut: 1, minQOut: 1,
+                deadline: uint64(block.timestamp + 60), timed: false
+            })));
+            uint256 gasBefore = gasleft();
+            (bool attemptedExit, bool exited) = s.q.processNext();
+            uint256 exitGas = gasBefore - gasleft();
+            emit log_named_uint("real-v4/router tranche exit gas", exitGas);
+            require(attemptedExit && exited, "integrated real LP exit failed");
+            require(exitGas < 9_000_000, "cursor exit gas cap exceeded");
+        }
         require(s.q.totalSupply() < supplyBefore, "Q not burned");
         require(s.weth.balanceOf(address(s.fanout)) > fanoutBefore, "wizard fanout unpaid");
         require(DEV.balance > devBefore, "developer unpaid");
         (,, StaticNextPoolFee.Status status) = s.q.feePolicy().assignments(ACTIVE_X);
         require(status == StaticNextPoolFee.Status.Selected && s.q.outcomeDeadline(ACTIVE_X) != 0,
             "unvalued exit not pending");
-        bool active;
-        try s.executor.inspect(ACTIVE_X) returns (uint160, bool, bool, bool, bool) {
-            active = true;
-        } catch {}
-        require(!active, "NFT still active");
+        require(s.executor.activePositionCount(ACTIVE_X) == 0, "NFT still active");
     }
 
     function testRealV4MintBurnAndRouterActiveSaleUnderCursorGasCap() external {
         Setup memory s = _setup();
         _openAndCross(s);
         _exitAndAssert(s);
+    }
+
+    function testTwoHourWindDownBurnsUntouchedQOnlyPositions() external {
+        Setup memory s = _setup();
+        s.q.enqueue(ACTIVE_X);
+        s.q.configureOpen(ACTIVE_X, abi.encode(_openConfig(s.spot, address(s.q))));
+        (bool attemptedOpen, bool opened) = s.q.processNext();
+        require(attemptedOpen && opened, "three-position mint failed");
+        require(s.executor.activePositionCount(ACTIVE_X) == 3, "wrong opening count");
+        (bool entered, bool exitReady) = s.inspector.poke(ACTIVE_X);
+        require(!entered && !exitReady, "untouched band was reported entered");
+
+        vm.warp(block.timestamp + 120 minutes);
+        require(s.q.requestWindDown(ACTIVE_X), "two-hour winddown not queued");
+        uint256 supplyBefore = s.q.totalSupply();
+        for (uint8 i; i < 3; ++i) {
+            s.q.configureExit(ACTIVE_X, abi.encode(ILaunchCursorExitConfigurator.ExitConfig({
+                tranche: i, minTokenOut: 0, minQuoteOut: 1,
+                minEthOut: 0, minQOut: 0,
+                deadline: uint64(block.timestamp + 60), timed: true
+            })));
+            (bool attemptedExit, bool exited) = s.q.processNext();
+            require(attemptedExit && exited, "timed Q-only exit failed");
+            require(s.executor.activePositionCount(ACTIVE_X) == 2 - i, "timed tranche count wrong");
+        }
+        require(s.q.totalSupply() < supplyBefore, "withdrawn Q was not burned");
     }
 
     receive() external payable {}

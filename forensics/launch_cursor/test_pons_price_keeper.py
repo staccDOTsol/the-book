@@ -73,52 +73,54 @@ class LogRpc:
 
 
 class KeeperTests(unittest.TestCase):
-    def test_verify_bindings_requires_matching_executable_depth_guard(self):
-        depth = "0x" + "99" * 20
+    def test_verify_bindings_uses_q_factory_and_router_without_fmv_gate(self):
         router = "0x" + "aa" * 20
+        policy = "0x" + "bb" * 20
         table = {
             (Q_LOW, keeper.EXECUTOR): EXE,
             (Q_LOW, watch.PONS_FACTORY_GETTER): watch.PONS_FACTORY,
-            (EXE, keeper.PRICE_GUARD): GUARD,
-            (GUARD, keeper.QUOTE_TOKEN): Q_LOW,
-            (GUARD, watch.PONS_FACTORY_GETTER): watch.PONS_FACTORY,
-            (GUARD, keeper.STATE_VIEW): VIEW,
-            (watch.PONS_FACTORY, keeper.MEME_HOOK): HOOK,
-            (EXE, keeper.DEPTH_GUARD): depth,
+            (EXE, keeper.CONTROLLER): Q_LOW,
+            (EXE, keeper.QUOTE_TOKEN): Q_LOW,
             (EXE, keeper.SETTLEMENT_ROUTER): router,
-            (depth, keeper.DEPTH_SOURCE): EXE,
-            (depth, keeper.PRICE_GUARD): GUARD,
-            (depth, keeper.SETTLEMENT_ROUTER): router,
-            (depth, keeper.QUOTE_TOKEN): Q_LOW,
-            (depth, watch.PONS_FACTORY_GETTER): watch.PONS_FACTORY,
-            (depth, keeper.DEPTH_QUOTER): keeper.QUOTER,
+            (EXE, keeper.POOL_MANAGER): keeper.POOL_MANAGER_ADDRESS,
+            (EXE, keeper.POSITION_MANAGER): keeper.POSITION_MANAGER_ADDRESS,
+            (EXE, keeper.STATE_VIEW): keeper.STATE_VIEW_ADDRESS,
+            (Q_LOW, keeper.FEE_POLICY): policy,
+            (policy, keeper.CONTROLLER): Q_LOW,
+            (router, keeper.ROUTER_SOURCE): EXE,
+            (router, keeper.QUOTE_TOKEN): Q_LOW,
+            (router, keeper.ROUTER_FACTORY): watch.PONS_FACTORY,
         }
         class Rpc:
             def call(self, method, params):
                 if method == "eth_chainId": return "0x1237"
                 if method == "eth_getCode": return "0x6001"
-                if method == "eth_call": return POOL_ID
-                raise AssertionError(method)
-        def uint(_rpc, contract, method, _type="uint256"):
-            return {keeper.QUOTE_ETH_FEE: 2500, keeper.QUOTE_ETH_SPACING: 25,
-                    keeper.DEPTH_SAFETY_BPS: 1500}[method]
+                raise AssertionError((method, params))
         with patch.object(keeper, "read_address", side_effect=lambda _rpc, contract, method: table[(contract, method)]), \
-             patch.object(keeper, "read_uint", side_effect=uint):
-            self.assertEqual(keeper.verify_bindings(Rpc(), 4663, Q_LOW, GUARD,
-                                                     keeper.QUOTER, None).depth_guard, depth)
-            with self.assertRaisesRegex(keeper.KeeperError, "haircut differs"):
-                keeper.verify_bindings(Rpc(), 4663, Q_LOW, GUARD, keeper.QUOTER,
-                                       None, 1400)
-            table[(depth, keeper.DEPTH_QUOTER)] = X
-            with self.assertRaisesRegex(keeper.KeeperError, "depth guard configuration"):
-                keeper.verify_bindings(Rpc(), 4663, Q_LOW, GUARD, keeper.QUOTER, None)
+             patch.object(keeper, "read_uint", side_effect=lambda _rpc, _contract, method, _type="uint256": {
+                 keeper.OPEN_MINT_BPS: 100,
+                 keeper.MIN_FEE_PIPS: 50_000,
+                 keeper.MAX_FEE_PIPS: 500_000,
+                 keeper.FEE_STEP_PIPS: 10_000,
+             }[method]):
+            bound = keeper.verify_bindings(Rpc(), 4663, Q_LOW, keeper.ZERO,
+                                           keeper.QUOTER, None)
+            self.assertEqual((bound.executor, bound.guard, bound.depth_guard),
+                             (EXE, keeper.ZERO, keeper.ZERO))
+            table[(EXE, keeper.QUOTE_TOKEN)] = X
+            with self.assertRaisesRegex(keeper.KeeperError, "controller/Q"):
+                keeper.verify_bindings(Rpc(), 4663, Q_LOW, keeper.ZERO,
+                                       keeper.QUOTER, None)
 
-    def test_tick_math_matches_v4_bounds(self):
+    def test_tick_math_and_exact_ratio_bounds(self):
         self.assertEqual(keeper.sqrt_at_tick(0), keeper.Q96)
         self.assertEqual(keeper.sqrt_at_tick(keeper.MIN_TICK), keeper.MIN_SQRT)
         self.assertEqual(keeper.sqrt_at_tick(keeper.MAX_TICK), keeper.MAX_SQRT)
         self.assertEqual(keeper.floor_tick(keeper.Q96), 0)
-        self.assertEqual(keeper.floor_tick(keeper.sqrt_at_tick(60)), 60)
+        self.assertEqual(keeper.floor_tick_ratio(1, 1), 0)
+        self.assertEqual(keeper.ceil_tick_ratio(1, 1), 0)
+        self.assertLessEqual(keeper.sqrt_at_tick(keeper.floor_tick_ratio(1, 2)) ** 2 * 2,
+                             keeper.Q192)
 
     def test_pinned_rpc_rewrites_all_planning_state_reads(self):
         class Rpc:
@@ -128,178 +130,144 @@ class KeeperTests(unittest.TestCase):
                 return "0x"
         rpc = Rpc()
         pinned = keeper.PinnedRpc(rpc, 123)
-        pinned.call("eth_call", [{"to": Q_LOW, "data": keeper.REFERENCE}, "latest"])
+        pinned.call("eth_call", [{"to": Q_LOW, "data": keeper.TOTAL_SUPPLY}, "latest"])
         pinned.call("eth_getBlockByNumber", ["latest", False])
-        pinned.call("eth_blockNumber", [])
         self.assertEqual(rpc.calls[0][1][1], hex(123))
         self.assertEqual(rpc.calls[1][1][0], hex(123))
-        self.assertEqual(rpc.calls[2][1], [])
 
-    def test_pinned_quote_provider_passes_block_to_quoter(self):
-        class Rpc:
-            def __init__(self): self.tag = None
-            def call(self, method, params):
-                self.tag = params[1]
-                return "0x" + encode(["uint256", "uint256"], [2, 1000]).hex()
-        rpc = Rpc()
-        provider = keeper.ExecutableQuoteProvider(rpc, bindings()).at_block(123)
-        provider.quote_single((keeper.ZERO, Q_LOW, 2500, 25, keeper.ZERO), True, 1)
-        self.assertEqual(rpc.tag, hex(123))
-
-    def test_same_height_reorg_during_plan_is_retried(self):
-        class Rpc:
-            def __init__(self): self.hash_reads = 0
-            def call(self, method, params):
-                if method == "eth_blockNumber": return "0x20"
-                if method == "eth_getBlockByNumber":
-                    self.hash_reads += 1
-                    return {"hash": "0x" + ("aa" if self.hash_reads < 3 else "bb") * 32,
-                            "timestamp": "0x64"}
-                raise AssertionError(method)
-        class Quotes:
-            def quote_x_to_q(self, _token, _launch, x): return x * 9 // 10
-        rpc = Rpc()
-        with patch.object(keeper, "read_launch", return_value=launch(0)), \
-             patch.object(keeper, "quote_eth_liquidity", return_value=1), \
-             patch.object(keeper, "guard_reference", return_value=keeper.Q96), \
-             patch.object(keeper, "q_vault_balance", return_value=10**18):
-            with self.assertRaisesRegex(keeper.WaitForPrice, "block changed"):
-                keeper.make_plan(rpc, bindings(), X, keeper.PlanSettings(), Quotes())
-        self.assertEqual(rpc.hash_reads, 3)
-
-    def test_q_only_plan_both_address_orderings_uses_budgeted_quote_size(self):
-        idle = 10**18
-        settings = keeper.PlanSettings()
+    def test_three_bands_use_p0_and_pons_multiplier_for_both_token_orders(self):
+        supply = 10**27
+        x_supply = 10**27
+        expected_mints = (10**25, 101 * 10**23, 10201 * 10**21)
         for q in (Q_LOW, Q_HIGH):
             with self.subTest(q=q):
-                samples = []
-                def quote(x):
-                    samples.append(x)
-                    return x * 9 // 10
-                plan = keeper.plan_position(X, q, keeper.Q96, idle, quote, 100, settings)
-                budget = idle // 4
-                self.assertEqual(plan.max_quote_in, budget)
-                self.assertEqual(samples[0], budget * settings.quote_size_multiple)
-                self.assertEqual(samples[-1], plan.sample_x_in)
-                self.assertEqual(plan.safe_q_out, plan.executable_q_out * 85 // 100)
-                lo, hi = keeper.sqrt_at_tick(plan.tick_lower), keeper.sqrt_at_tick(plan.tick_upper)
-                self.assertEqual(plan.tick_lower % settings.tick_spacing, 0)
-                self.assertEqual(plan.tick_upper % settings.tick_spacing, 0)
+                plan = keeper.plan_position(X, q, x_supply, supply,
+                                            10**18, 2 * 10**18, 100,
+                                            keeper.PlanSettings())
+                self.assertEqual(plan.minted_quote, expected_mints)
+                self.assertEqual(plan.max_quote_in, expected_mints)
+                self.assertEqual(plan.deadline, 220)
+                self.assertEqual(len(plan.liquidity), 3)
+                for i, multiple in enumerate((1, 2, 10)):
+                    lo = keeper.sqrt_at_tick(plan.tick_lower[i])
+                    hi = keeper.sqrt_at_tick(plan.tick_upper[i])
+                    self.assertEqual(plan.tick_lower[i] % 60, 0)
+                    self.assertEqual(plan.tick_upper[i] % 60, 0)
+                    if plan.quote_is_0:
+                        # Reciprocal X/Q: p0=.01, R=9. Ranges are rounded outward.
+                        self.assertLessEqual(lo * lo * multiple * 9,
+                                             100 * keeper.Q192)
+                        self.assertGreaterEqual(hi * hi, 100 * keeper.Q192)
+                        self.assertLess(plan.starting_sqrt_price_x96, lo)
+                        spent = keeper.amount0_ceil(plan.liquidity[i], lo, hi)
+                    else:
+                        self.assertLessEqual(lo * lo * 100, keeper.Q192)
+                        self.assertGreaterEqual(hi * hi * 100,
+                                                multiple * 9 * keeper.Q192)
+                        self.assertGreater(plan.starting_sqrt_price_x96, hi)
+                        spent = keeper.amount1_ceil(plan.liquidity[i], lo, hi)
+                    self.assertGreater(spent, 0)
+                    self.assertLessEqual(spent, expected_mints[i] * 95 // 100)
+                    self.assertLessEqual(spent, plan.max_quote_in[i])
                 if plan.quote_is_0:
-                    self.assertLessEqual(plan.starting_sqrt_price_x96, lo)
-                    self.assertGreaterEqual(lo * lo * plan.safe_q_out, plan.sample_x_in * keeper.Q192)
-                    spent = keeper.amount0_ceil(plan.liquidity, lo, hi)
-                    full_x = keeper.amount1_ceil(plan.liquidity, lo, hi)
+                    self.assertGreater(plan.tick_lower[0], plan.tick_lower[1])
+                    self.assertGreater(plan.tick_lower[1], plan.tick_lower[2])
                 else:
-                    self.assertGreaterEqual(plan.starting_sqrt_price_x96, hi)
-                    self.assertLessEqual(hi * hi * plan.sample_x_in, plan.safe_q_out * keeper.Q192)
-                    spent = keeper.amount1_ceil(plan.liquidity, lo, hi)
-                    full_x = keeper.amount0_ceil(plan.liquidity, lo, hi)
-                self.assertEqual(plan.sample_x_in, full_x)
-                self.assertLessEqual(spent, budget * settings.utilization_bps // 10000)
-                self.assertLessEqual(spent, plan.max_quote_in)
-                self.assertGreater(spent, 0)
+                    self.assertLess(plan.tick_upper[0], plan.tick_upper[1])
+                    self.assertLess(plan.tick_upper[1], plan.tick_upper[2])
+                self.assertEqual(keeper.decode(keeper.CONFIG_TYPES,
+                                 keeper.encode(keeper.CONFIG_TYPES, plan.abi_config()))[1],
+                                 plan.liquidity)
 
-    def test_thin_route_full_band_exposure_fails_closed_in_both_orderings(self):
-        # A quote for 2*budget X is insufficient: the shifted full band can
-        # acquire far more X, and a thin constant-product exit loses to impact.
-        reserve = 2 * 10**17
-        for q in (Q_LOW, Q_HIGH):
-            with self.subTest(q=q):
-                quoted = []
-                def quote(x):
-                    quoted.append(x)
-                    return reserve * x // (reserve + x)
-                with self.assertRaisesRegex(keeper.WaitForPrice, "full X exposure"):
-                    keeper.plan_position(X, q, keeper.Q96, 10**18, quote, 100,
-                                         keeper.PlanSettings())
-                self.assertGreater(max(quoted), 2 * (10**18 // 4))
+    def test_invalid_static_economics_fail_closed(self):
+        args = (X, Q_LOW, 10**27, 10**27, 10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        for index, value in ((2, 0), (3, 0), (4, 0), (5, 0)):
+            with self.subTest(index=index):
+                altered = list(args)
+                altered[index] = value
+                with self.assertRaises(keeper.WaitForPrice):
+                    keeper.plan_position(*altered)
+        with self.assertRaisesRegex(keeper.WaitForPrice, "tick range"):
+            keeper.plan_position(X, Q_LOW, 10**27, 10**27, 1, 10**80,
+                                 100, keeper.PlanSettings())
 
-    def test_no_quote_or_idle_balance_fails_closed(self):
-        with self.assertRaisesRegex(keeper.WaitForPrice, "idle Q"):
-            keeper.plan_position(X, Q_LOW, keeper.Q96, 0, lambda x: x, 100, keeper.PlanSettings())
-        with self.assertRaisesRegex(keeper.WaitForPrice, "too little Q"):
-            keeper.plan_position(X, Q_LOW, keeper.Q96, 10**18, lambda _x: 0, 100, keeper.PlanSettings())
-        with self.assertRaises(keeper.WaitForPrice):
-            keeper.plan_position(X, Q_LOW, keeper.Q96, 10**18, lambda _x: 1, 100, keeper.PlanSettings())
-
-    def test_guard_spot_check_is_separate_from_executable_sale_floor(self):
-        class Rpc:
-            def __init__(self): self.methods = []
+    def test_make_plan_authenticates_curve_and_ignores_qeth_fmv(self):
+        record = list(launch(0))
+        record[5] = 2 * 10**18
+        calls = []
+        class Rpc(LogRpc):
             def call(self, method, params):
-                data = params[0]["data"]
-                self.methods.append(data[:10])
-                return "0x" + encode(["uint160"], [keeper.Q96]).hex()
-        rpc = Rpc()
-        self.assertEqual(keeper.guard_reference(rpc, bindings(), X), keeper.Q96)
-        self.assertEqual(rpc.methods, [keeper.REFERENCE, keeper.VALIDATE])
+                if method == "eth_getCode": return "0x6001"
+                if method == "eth_getBlockByNumber" and params[0] == hex(self.head):
+                    return {"hash": "0x" + f"{self.head:064x}", "timestamp": "0x64"}
+                return super().call(method, params)
+        def address(_rpc, contract, method):
+            calls.append((contract, method))
+            return {
+                (CURVE, keeper.ROUTER_FACTORY): watch.PONS_FACTORY,
+                (CURVE, keeper.CURVE_TOKEN): X,
+                (CURVE, keeper.CURVE_PAIR_TOKEN): keeper.ZERO,
+            }[(contract, method)]
+        def number(_rpc, contract, method, _type="uint256"):
+            return {
+                (CURVE, keeper.CURVE_GRADUATION_THRESHOLD): 2 * 10**18,
+                (CURVE, keeper.CURVE_REAL_QUOTE): 5 * 10**17,
+                (X, keeper.TOTAL_SUPPLY): 10**27,
+                (Q_LOW, keeper.TOTAL_SUPPLY): 10**27,
+            }[(contract, method)]
+        def abi(_rpc, contract, method, *_args, **_kwargs):
+            if (contract, method) == (CURVE, keeper.GET_RESERVES):
+                return (15 * 10**17, 9 * 10**26)
+            if (contract, method) == (EXE, keeper.ACTIVE_POSITION_COUNT):
+                return (0,)
+            raise AssertionError((contract, method))
+        rpc = Rpc(head=32)
+        class ReorgRpc(Rpc):
+            def __init__(self):
+                super().__init__(head=32)
+                self.block_reads = 0
+            def call(self, method, params):
+                if method == "eth_getBlockByNumber" and params[0] == hex(self.head):
+                    self.block_reads += 1
+                    return {"hash": "0x" + ("ff" if self.block_reads == 3 else "00") * 32,
+                            "timestamp": "0x64"}
+                return super().call(method, params)
+        with patch.object(keeper, "read_launch", return_value=tuple(record)), \
+             patch.object(keeper, "read_address", side_effect=address), \
+             patch.object(keeper, "read_uint", side_effect=number), \
+             patch.object(keeper, "call_abi", side_effect=abi):
+            plan = keeper.make_plan(rpc, bindings(), X, keeper.PlanSettings())
+            with self.assertRaisesRegex(keeper.WaitForPrice, "block changed"):
+                keeper.make_plan(ReorgRpc(), bindings(), X, keeper.PlanSettings())
+        self.assertEqual(plan.phantom_quote, 10**18)
+        self.assertFalse(any(contract == GUARD for contract, _ in calls))
+        self.assertFalse(any(method == "eth_call" for method, _ in rpc.calls))
+        record[4] = Q_LOW
+        with patch.object(keeper, "read_launch", return_value=tuple(record)):
+            with self.assertRaisesRegex(keeper.UnsupportedLaunch, "native ETH"):
+                keeper.make_plan(rpc, bindings(), X, keeper.PlanSettings())
 
-    def test_phase_one_and_empty_qeth_liquidity_wait_without_plan(self):
-        rpc = LogRpc()
+    def test_phase_one_waits_without_curve_reads(self):
         with patch.object(keeper, "read_launch", return_value=launch(1)), \
-             patch.object(keeper, "quote_eth_liquidity", side_effect=AssertionError("must not quote")):
+             patch.object(keeper, "read_address", side_effect=AssertionError("curve read")):
             with self.assertRaisesRegex(keeper.WaitForPrice, "phase 1"):
-                keeper.make_plan(rpc, bindings(), X, keeper.PlanSettings(), object())
-        with patch.object(keeper, "read_launch", return_value=launch(0)), \
-             patch.object(keeper, "quote_eth_liquidity", return_value=0):
-            with self.assertRaisesRegex(keeper.WaitForPrice, "no liquidity"):
-                keeper.make_plan(rpc, bindings(), X, keeper.PlanSettings(), object())
+                keeper.make_plan(LogRpc(), bindings(), X, keeper.PlanSettings())
 
-    def test_phase_zero_sell_formula_and_v4_eth_to_q(self):
-        class Rpc:
-            def __init__(self): self.keys = []
-            def call(self, method, params):
-                self.assert_method(method)
-                data = params[0]["data"]
-                if data == keeper.GET_RESERVES:
-                    return "0x" + encode(["uint256", "uint256"], [100 * 10**18, 1000 * 10**18]).hex()
-                if data == keeper.FEE_BPS: return "0x" + encode(["uint256"], [100]).hex()
-                if data == keeper.CREATOR_TAX_BPS: return "0x" + encode(["uint256"], [50]).hex()
-                if data.startswith(keeper.QUOTE_EXACT_INPUT_SINGLE):
-                    key, zero_for_one, amount, _ = decode(
-                        ["((address,address,uint24,int24,address),bool,uint128,bytes)"],
-                        bytes.fromhex(data[10:]))[0]
-                    self.keys.append((key, zero_for_one, amount))
-                    return "0x" + encode(["uint256", "uint256"], [amount * 100, 200000]).hex()
-                raise AssertionError(data)
-            def assert_method(self, method):
-                if method != "eth_call": raise AssertionError(method)
-        rpc = Rpc()
-        provider = keeper.ExecutableQuoteProvider(rpc, bindings())
-        x_in = 10**18
-        got = provider.quote_x_to_q(X, launch(0), x_in)
-        gross = x_in * 10000 * (100 * 10**18) // (1000 * 10**18 * 10000 + x_in * 10000)
-        eth = gross - gross * 100 // 10000 - gross * 50 // 10000
-        self.assertEqual(got, eth * 100)
-        self.assertEqual(rpc.keys[0][1:], (True, eth))
-        self.assertEqual(rpc.keys[0][0][0], keeper.ZERO)
-        self.assertEqual(rpc.keys[0][0][1], Q_LOW)
-
-    def test_phase_two_v4_quote_directions(self):
-        class Rpc:
-            def __init__(self): self.calls = []
-            def call(self, method, params):
-                value = decode(["((address,address,uint24,int24,address),bool,uint128,bytes)"],
-                               bytes.fromhex(params[0]["data"][10:]))[0]
-                self.calls.append(value)
-                return "0x" + encode(["uint256", "uint256"], [value[2] * 2, 1]).hex()
-        rpc = Rpc()
-        got = keeper.ExecutableQuoteProvider(rpc, bindings()).quote_x_to_q(X, launch(2), 123)
-        self.assertEqual(got, 492)
-        self.assertEqual([v[1] for v in rpc.calls], [False, True])
-        self.assertEqual(rpc.calls[0][0], (keeper.ZERO, X, 3000, 60, HOOK))
-        self.assertEqual(rpc.calls[1][0], (keeper.ZERO, Q_LOW, 2500, 25, keeper.ZERO))
-
-    def test_vault_budget_excludes_harvested_quote_reserve(self):
-        class Rpc:
-            def __init__(self, reserved): self.reserved = reserved
-            def call(self, method, params):
-                if params[0]["to"] == Q_LOW:
-                    return "0x" + encode(["uint256"], [1000]).hex()
-                return "0x" + encode(["uint256"], [self.reserved]).hex()
-        self.assertEqual(keeper.q_vault_balance(Rpc(250), bindings()), 750)
-        with self.assertRaisesRegex(keeper.KeeperError, "exceeds"):
-            keeper.q_vault_balance(Rpc(1001), bindings())
+    def test_new_configure_abi_and_existing_bounds(self):
+        plan = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                    10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        data = keeper.configure_data(plan)
+        self.assertTrue(data.startswith(keeper.CONFIGURE))
+        self.assertEqual(len(data), keeper.CONFIGURE_DATA_HEX_LENGTH)
+        encoded_token, encoded = decode(["address", "bytes"], bytes.fromhex(data[10:]))
+        self.assertEqual(encoded_token.lower(), X)
+        self.assertEqual(decode(keeper.CONFIG_TYPES, encoded), plan.abi_config())
+        self.assertTrue(keeper.existing_config_safe(None, bindings(), plan, plan.abi_config(), 100))
+        stale = (*plan.abi_config()[:6], 120)
+        self.assertFalse(keeper.existing_config_safe(None, bindings(), plan, stale, 100))
+        oversized = list(plan.abi_config())
+        oversized[2] = (plan.max_quote_in[0] + 1, *plan.max_quote_in[1:])
+        self.assertFalse(keeper.existing_config_safe(None, bindings(), plan, tuple(oversized), 100))
 
     def test_durable_log_cursor_keeps_pending_tokens_until_q_enqueues(self):
         rpc = LogRpc([log(11, X)], head=14)
@@ -421,8 +389,8 @@ class KeeperTests(unittest.TestCase):
                                    [fresh], priority_tokens=[fresh],
                                    priority_expires={fresh: keeper.PRIORITY_ROUNDS})
         rpc = LogRpc(head=12)
-        plan = keeper.OpenPlan(fresh, 1, 1, 1, 60, 0, 60, 100,
-                               1, 1, 1, True)
+        plan = keeper.plan_position(fresh, Q_LOW, 10**27, 10**27,
+                                    10**18, 2 * 10**18, 100, keeper.PlanSettings())
         with patch.object(keeper, "q_launch_state", return_value=(0, False)):
             first = keeper.run_cycle(rpc, bindings(), state, FakeStore(),
                                      keeper.PlanSettings(), object(), None,
@@ -445,8 +413,8 @@ class KeeperTests(unittest.TestCase):
                                    priority_expires={hot: keeper.PRIORITY_ROUNDS})
         rpc = LogRpc(head=12)
         calls = []
-        plan = keeper.OpenPlan(hot, 1, 1, 1, 60, 0, 60, 100,
-                               1, 1, 1, True)
+        plan = keeper.plan_position(hot, Q_LOW, 10**27, 10**27,
+                                    10**18, 2 * 10**18, 100, keeper.PlanSettings())
         def stage(_rpc, _q, candidate, *_args):
             calls.append(candidate)
             return (1, False) if candidate == hot else (0, False)
@@ -525,6 +493,10 @@ class KeeperTests(unittest.TestCase):
         signer.recover(state, store, keeper.PlanSettings(), object())
         self.assertEqual(rpc.sent, [pending["rawTx"]])
         self.assertIsNone(state.pending_tx)
+        plan = keeper.plan_position(X, Q_LOW, 10**27, 10**27,
+                                    10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        signer.submit("configure", X, keeper.configure_data(plan), state, store)
+        self.assertEqual(len(rpc.sent), 2)
 
     def test_state_file_is_local_and_mode_600(self):
         path = keeper.LOCAL / f"test-pons-price-{uuid4().hex}.json"

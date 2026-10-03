@@ -22,9 +22,10 @@ contract ForkSeededQuoteExitExecutor is HooklessLPExecutor {
         HooklessLPExecutor(manager, positionManager, view_, permit2_)
     {}
 
-    function markEnteredForTest(address token) external {
-        require(positions[token].active, "position inactive");
-        positions[token].enteredBand = true;
+    function markEnteredForTest(address token, uint8 tranche) external {
+        Position storage position = tranche == 0 ? positions[token] : extraPositions[token][tranche];
+        require(position.active, "position inactive");
+        position.enteredBand = true;
     }
 }
 
@@ -49,28 +50,29 @@ contract HooklessLPQuoteExitForkTest {
         uint160 start = address(q) < address(x)
             ? HooklessTickMath.getSqrtPriceAtTick(tickLower)
             : HooklessTickMath.getSqrtPriceAtTick(tickUpper);
-        q.configureOpen(address(x), ILaunchCursorConfigurator.OpenConfig({
+        ILaunchCursorConfigurator.OpenConfig memory config = ILaunchCursorConfigurator.OpenConfig({
             startingSqrtPriceX96: start,
-            liquidity: 1 ether,
-            maxQuoteIn: 10 ether,
+            liquidity: [uint128(1 ether), uint128(1 ether), uint128(1 ether)],
+            maxQuoteIn: [uint128(10 ether), uint128(10 ether), uint128(10 ether)],
             tickSpacing: 10,
-            tickLower: tickLower,
-            tickUpper: tickUpper,
-            deadline: uint64(block.timestamp + 1_000)
-        }));
+            tickLower: [tickLower, tickLower + 10, tickLower + 20],
+            tickUpper: [tickUpper, tickUpper, tickUpper],
+            deadline: uint64(block.timestamp + 600)
+        });
+        q.configureOpen(address(x), abi.encode(config));
         (bool attempted, bool succeeded) = q.processNext();
         require(attempted && succeeded, "open failed");
         (, , bool atQuoteBoundary, bool atTokenBoundary, bool entered) = executor.inspect(address(x));
         require(atQuoteBoundary && !atTokenBoundary && !entered, "wrong opening side");
     }
 
-    function _markEnteredForSettlementTest(ForkSeededQuoteExitExecutor executor, PositionInspector inspector, address x)
+    function _markEnteredForSettlementTest(ForkSeededQuoteExitExecutor executor, PositionInspector inspector, address x, uint8 tranche)
         private
     {
         // Bypass price traversal solely to isolate the actual PositionManager
         // burn and Q balance accounting in the production executor code.
-        executor.markEnteredForTest(x);
-        (, , bool atQuoteBoundary, , bool entered) = executor.inspect(x);
+        executor.markEnteredForTest(x, tranche);
+        (, , bool atQuoteBoundary, , bool entered) = executor.inspectTranche(x, tranche);
         require(atQuoteBoundary && entered, "test entry flag failed");
         (bool reportedEntered, bool exitReady) = inspector.poke(x);
         require(reportedEntered && exitReady, "exit not queued");
@@ -79,15 +81,18 @@ contract HooklessLPQuoteExitForkTest {
     function _exitAndAssert(
         ForkMockToken x, ForkSeededQuoteExitExecutor executor, PositionInspector inspector, LaunchCursorToken q
     ) private {
-        _markEnteredForSettlementTest(executor, inspector, address(x));
-        q.configureExit(address(x), ILaunchCursorExitConfigurator.ExitConfig({
-            minTokenOut: 0, minQuoteOut: 1, minEthOut: 0, minQOut: 0,
-            deadline: uint64(block.timestamp + 60)
-        }));
         uint256 idleQuoteBefore = q.balanceOf(address(executor));
         uint256 supplyBefore = q.totalSupply();
-        (bool attempted, bool succeeded) = q.processNext();
-        require(attempted && succeeded, "quote-only exit failed");
+        for (uint8 i; i < 3; ++i) {
+            _markEnteredForSettlementTest(executor, inspector, address(x), i);
+            q.configureExit(address(x), abi.encode(ILaunchCursorExitConfigurator.ExitConfig({
+                tranche: i, minTokenOut: 0, minQuoteOut: 1, minEthOut: 0, minQOut: 0,
+                deadline: uint64(block.timestamp + 60), timed: false
+            })));
+            (bool attempted, bool succeeded) = q.processNext();
+            require(attempted && succeeded, "quote-only exit failed");
+            require(executor.activePositionCount(address(x)) == 2 - i, "wrong remaining LP count");
+        }
         require(q.balanceOf(address(executor)) == idleQuoteBefore, "idle vault Q burned");
         require(q.totalSupply() < supplyBefore, "no recovered Q burned");
         require(x.balanceOf(address(executor)) == 0, "X left in vault");
@@ -111,22 +116,18 @@ contract HooklessLPQuoteExitForkTest {
         PositionInspector inspector = new PositionInspector(address(executor));
         address[] memory endpoints = new address[](0);
         LaunchCursorToken q = new LaunchCursorToken(
-            "Fork Test Q", "Q", 1_000_000_000 ether,
+            LaunchCursorToken.Metadata("Fork Test Q", "Q", "Fork test quote", "ipfs://fork-test-q"),
+            1_000_000_000 ether,
             address(factory), address(executor), address(inspector),
-            30, 2_000_000, 1 gwei, endpoints
+            30, 9_000_000, 1 gwei, endpoints
         );
         executor.bindController(address(q));
         inspector.bindCursor(address(q));
         ForkMockPriceGuard guard = new ForkMockPriceGuard(address(factory), STATE_VIEW, address(q));
-        executor.bindPriceGuard(address(guard));
         ForkMockSettlementRouter router = new ForkMockSettlementRouter(
             address(executor), address(q), address(factory), POOL_MANAGER, guard.quoteEthPoolId()
         );
         executor.bindSettlementRouter(address(router));
-        ForkMockDepthGuard depth = new ForkMockDepthGuard(
-            address(executor), address(guard), address(router), address(q), address(factory)
-        );
-        executor.bindDepthGuard(address(depth));
         require(q.transfer(address(executor), 100 ether), "Q funding failed");
 
         ForkMockToken x = new ForkMockToken();

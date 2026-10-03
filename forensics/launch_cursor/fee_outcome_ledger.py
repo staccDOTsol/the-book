@@ -321,8 +321,10 @@ def _observation(row: dict[str, Any], as_of_block: int, index: int,
 
 def analyze(document: dict[str, Any]) -> dict[str, Any]:
     doc = _object(document, "input")
+    if doc.get("schema_version") == 2:
+        return analyze_minted(doc)
     if doc.get("schema_version") != 1:
-        raise EvidenceError("schema_version must be 1")
+        raise EvidenceError("schema_version must be 1 or 2")
     chain_id = _field_uint(doc, "chain_id", "input")
     if chain_id != 4663:
         raise EvidenceError("chain_id must be Robinhood chain 4663")
@@ -415,9 +417,163 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def analyze_minted(document: dict[str, Any]) -> dict[str, Any]:
+    """Reconcile the active minted-Q fee feedback schema without a cash-cost fiction.
+
+    These local records are not themselves chain authentication. The live
+    feedback keeper authenticates receipts and pins archive quotes first.
+    """
+    from pons_fee_feedback_keeper import canonical_evidence, gross_mark_score
+
+    doc = _object(document, "input")
+    if _field_uint(doc, "chain_id", "input") != 4663:
+        raise EvidenceError("chain_id must be Robinhood chain 4663")
+    as_of = _field_uint(doc, "as_of_block", "input")
+    inputs = _list(doc.get("observations"), "input.observations")
+    rows: list[dict[str, Any]] = []
+    arms: dict[int, dict[str, Any]] = {}
+    seen: set[str] = set()
+    for i, raw in enumerate(inputs):
+        label = f"observations[{i}]"
+        item = _object(raw, label)
+        token = _hex(item.get("token"), ADDRESS, f"{label}.token")
+        if token in seen:
+            raise EvidenceError(f"duplicate token {token}")
+        seen.add(token)
+        fee = _field_uint(item, "fee_pips", label)
+        if fee < 50_000 or fee > 500_000 or fee % 10_000:
+            raise EvidenceError(f"{label}.fee_pips is not a 5–50% fee arm")
+        stage = item.get("stage")
+        if stage not in STAGES:
+            raise EvidenceError(f"{label}.stage is invalid")
+        record = {"token": token, "fee_pips": fee, "stage": stage,
+                  "gross_mark_score_bps": None, "gross_surplus_eth_wei": None,
+                  "evidence_hash": None, "profit_claim": False}
+        evidence = item.get("evidence")
+        if evidence is not None:
+            if stage != "exited":
+                raise EvidenceError(f"{label}.evidence requires exited stage")
+            evidence = _object(evidence, f"{label}.evidence")
+            if evidence.get("schemaVersion") != 1 or evidence.get("chainId") != 4663 or \
+                    evidence.get("token", "").lower() != token:
+                raise EvidenceError(f"{label}.evidence identity disagrees")
+            observed = _object(evidence.get("observation"), f"{label}.evidence.observation")
+            if observed.get("token", "").lower() != token or \
+                    _field_uint(observed, "feePips", f"{label}.evidence.observation") != fee or \
+                    _field_uint(observed, "trancheCount", f"{label}.evidence.observation") != 3:
+                raise EvidenceError(f"{label}.evidence opening disagrees with three-tranche fee assignment")
+            q_spent = _field_uint(observed, "qSpentWei", f"{label}.evidence.observation")
+            q_minted = _field_uint(observed, "qMintedWei", f"{label}.evidence.observation")
+            unused = _field_uint(observed, "qUnusedBurnedAtOpenWei", f"{label}.evidence.observation")
+            q_burned = _field_uint(observed, "qBurnedWei", f"{label}.evidence.observation")
+            open_block = _field_uint(observed, "openBlock", f"{label}.evidence.observation")
+            exit_block = _field_uint(observed, "exitBlock", f"{label}.evidence.observation")
+            if q_spent == 0 or q_burned == 0 or q_minted != q_spent + unused or \
+                    open_block < 2 or not open_block <= exit_block <= as_of:
+                raise EvidenceError(f"{label}.evidence mint, burn, or chronology is invalid")
+            entry = _object(evidence.get("entryQuote"), f"{label}.evidence.entryQuote")
+            burns = _list(evidence.get("burnQuotes"), f"{label}.evidence.burnQuotes")
+            settlements = _list(observed.get("settlementBurns"),
+                                f"{label}.evidence.observation.settlementBurns")
+            if len(settlements) < 3 or \
+                    sum(_object(s, f"{label}.settlement").get("kind") == "position_exit"
+                        for s in settlements) != 3 or \
+                    _object(settlements[-1], f"{label}.settlement").get("kind") != "position_exit":
+                raise EvidenceError(f"{label}.evidence must include all three position exits")
+            expected_burns = []
+            previous_block = open_block
+            for j, raw_settlement in enumerate(settlements):
+                settlement = _object(raw_settlement, f"{label}.settlement[{j}]")
+                block = _field_uint(settlement, "block", f"{label}.settlement[{j}]")
+                amount = _field_uint(settlement, "qBurnedWei", f"{label}.settlement[{j}]")
+                if (settlement.get("kind") not in {"position_exit", "fee_harvest"} or
+                        amount == 0 or not previous_block <= block <= exit_block or block < 2):
+                    raise EvidenceError(f"{label}.evidence settlement chronology is invalid")
+                expected_burns.append((amount, block - 1))
+                previous_block = block
+            if previous_block != exit_block:
+                raise EvidenceError(f"{label}.evidence final settlement block differs from closure")
+            if (_field_uint(entry, "qInputWei", f"{label}.evidence.entryQuote") != q_spent or
+                    _field_uint(entry, "sourceBlock", f"{label}.evidence.entryQuote") != open_block - 1 or
+                    entry.get("route") != "zero-hook Q/ETH exact-input Q sale" or
+                    len(burns) != len(expected_burns)):
+                raise EvidenceError(f"{label}.evidence quotes do not cover exact Q amounts at pinned blocks")
+            _hex(entry.get("sourceBlockHash"), TX_HASH, f"{label}.evidence.entryQuote.sourceBlockHash")
+            quoted_burn_eth = 0
+            for j, (quote_raw, (amount, block)) in enumerate(zip(burns, expected_burns, strict=True)):
+                quote = _object(quote_raw, f"{label}.evidence.burnQuotes[{j}]")
+                if (_field_uint(quote, "qInputWei", f"{label}.evidence.burnQuotes[{j}]") != amount or
+                        _field_uint(quote, "sourceBlock", f"{label}.evidence.burnQuotes[{j}]") != block or
+                        quote.get("route") != "zero-hook Q/ETH exact-input Q sale"):
+                    raise EvidenceError(f"{label}.evidence quotes do not cover exact Q amounts at pinned blocks")
+                _hex(quote.get("sourceBlockHash"), TX_HASH,
+                     f"{label}.evidence.burnQuotes[{j}].sourceBlockHash")
+                quoted_burn_eth += _field_uint(quote, "ethOutputWei", f"{label}.evidence.burnQuotes[{j}]")
+            if sum(amount for amount, _ in expected_burns) != q_burned:
+                raise EvidenceError(f"{label}.evidence lifetime Q burns do not reconcile")
+            computed = gross_mark_score(
+                observed, _field_uint(entry, "ethOutputWei", f"{label}.evidence.entryQuote"),
+                quoted_burn_eth)
+            if evidence.get("score") != computed:
+                raise EvidenceError(f"{label}.evidence score does not recompute")
+            evidence_hash = "0x" + hashlib.sha256(canonical_evidence(evidence)).hexdigest()
+            record.update({"gross_mark_score_bps": computed["grossReturnBpsForFeePolicy"],
+                           "gross_mark_score_bps_unclipped": computed["grossReturnBpsUnclipped"],
+                           "gross_surplus_eth_wei": computed["grossEstimatedSurplusEthWei"],
+                           "evidence_hash": evidence_hash,
+                           "recipient_cash_eth_wei": computed["recipientCashEthWei"],
+                           "q_minted_deposited_wei": computed["entryMintedQDepositedWei"],
+                           "q_burned_lifetime_wei": computed["exitQBurnedWei"]})
+        elif stage == "exited":
+            record["censor_reason"] = "missing authenticated historical Q/ETH quote evidence"
+        if stage == "active":
+            count = item.get("observed_swap_count")
+            if count is not None:
+                record["observed_swap_count"] = _uint(count, f"{label}.observed_swap_count")
+        rows.append(record)
+        arm = arms.setdefault(fee, {"fee_pips": fee, "assigned": 0,
+                                     "completed_with_gross_mark": 0,
+                                     "unvalued_or_censored": 0,
+                                     "still_open": 0, "idle_open_at_horizon": 0,
+                                     "selection_score_sum_bps": 0})
+        arm["assigned"] += 1
+        if record["gross_mark_score_bps"] is not None:
+            arm["completed_with_gross_mark"] += 1
+            arm["selection_score_sum_bps"] += record["gross_mark_score_bps"]
+        else:
+            arm["selection_score_sum_bps"] -= 5_000
+            if stage == "active":
+                arm["still_open"] += 1
+                if record.get("observed_swap_count") == 0:
+                    arm["idle_open_at_horizon"] += 1
+            else:
+                arm["unvalued_or_censored"] += 1
+    for arm in arms.values():
+        arm["exploratory_selection_mean_bps"] = (
+            arm["selection_score_sum_bps"] // arm["assigned"])
+    return {"schema_version": 2, "chain_id": 4663, "as_of_block": as_of,
+            "metric": "gross_mark_to_market_eth_equivalent_excluding_gas",
+            "profit_claim": False,
+            "selection_penalty_bps_for_unresolved": -5_000,
+            "evidence_scope": "locally reconciled; use the live keeper for canonical receipt and quote authentication",
+            "observations": rows, "arms": [arms[fee] for fee in sorted(arms)]}
+
+
 def draft_report_calls(document: dict[str, Any], report: dict[str, Any]) -> list[dict[str, Any]]:
     """Encode unsigned calls only; the JSON evidence is not chain-authenticated."""
     doc = _object(document, "input")
+    if doc.get("schema_version") == 2:
+        from pons_fee_feedback_keeper import report_data
+        cursor = doc.get("cursor_address")
+        if cursor is not None:
+            cursor = _hex(cursor, ADDRESS, "input.cursor_address")
+        return [{"to": cursor, "token": row["token"],
+                 "gross_mark_score_bps": row["gross_mark_score_bps"],
+                 "evidence_hash": row["evidence_hash"],
+                 "calldata": report_data(row["token"], row["gross_mark_score_bps"],
+                                         row["evidence_hash"]),
+                 "status": "unsigned gross-mark draft; not a profit report or chain authentication"}
+                for row in report["observations"] if row["gross_mark_score_bps"] is not None]
     source_rows = _list(doc.get("observations"), "input.observations")
     cursor = doc.get("cursor_address")
     if cursor is not None:

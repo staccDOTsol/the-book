@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Automated, size-aware Q-only price planner for Pons launches.
+"""Deterministic three-band X/Q planner for authenticated Pons launches.
 
-The keeper uses Pons's phase-0 sell formula or the Robinhood v4 Quoter for a
-phase-2 X→ETH sale, then the v4 Quoter for ETH→Q. It never treats the guard's
-marginal spot as an executable price. Live Q.configureOpen/processNext writes
-are opt-in and are restricted to these two selectors.
+Each band is funded by a separate new 1%-of-supply Q mint. The price scale
+comes from that first mint and X's total supply; the range multiplier comes
+from the Pons curve's phantom reserve and graduation threshold. No external
+X/ETH or Q/ETH price is used. Live configureOpen/processNext writes are opt-in.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from contextlib import nullcontext
 from dataclasses import dataclass, asdict, field
 import fcntl
 import json
-from math import isqrt
 import os
 from pathlib import Path
 import sys
@@ -37,18 +36,20 @@ MAX_PRIORITY_TOKENS = 64
 PRIORITY_ROUNDS = 9
 MAX_DISCOVERY_LOGS = 128
 MAX_DISCOVERY_SPLITS = 16
-QUOTER = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
+QUOTER = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"  # exit/harvest keeper compatibility
+POOL_MANAGER_ADDRESS = "0x8366a39cc670b4001a1121b8f6a443a643e40951"
+POSITION_MANAGER_ADDRESS = "0x58daec3116aae6d93017baaea7749052e8a04fa7"
+STATE_VIEW_ADDRESS = "0xf3334192d15450cdd385c8b70e03f9a6bd9e673b"
 ZERO = "0x" + "00" * 20
 Q96 = 1 << 96
 Q192 = 1 << 192
-Q128 = 1 << 128
 MAX_UINT128 = (1 << 128) - 1
 MIN_TICK = -887272
 MAX_TICK = 887272
 MIN_SQRT = 4295128739
 MAX_SQRT = 1461446703485210103287273052203988822378723970342
 
-CONFIGURE = "0xb109c8d4"  # configureOpen(address,(uint160,uint128,uint128,int24,int24,int24,uint64))
+CONFIGURE = "0x" + keccak(text="configureOpen(address,bytes)")[:4].hex()
 PROCESS_NEXT = "0x4ba3eeaf"  # processNext()
 PRICE_CONFIGURATOR = "0x315d563b"
 EXECUTOR = "0xc34c08e5"
@@ -60,25 +61,33 @@ QUOTE_ETH_SPACING = "0x2dceba42"
 STATE_VIEW = "0x4c4a3c25"
 MEME_HOOK = "0x6651812c"
 GET_LAUNCHED = "0x3cf28b5a"
-GET_LIQUIDITY = "0xfa6793d5"
-REFERENCE = "0x6e731efb"
-VALIDATE = "0xc394bbe0"  # validate(address,uint160)
-BALANCE_OF = "0x70a08231"
 OPEN_CONFIGS = "0xb1a38d6c"
-RESERVED_HARVESTED_QUOTE = "0x6a8604a8"
 GET_RESERVES = "0x0902f1ac"
 FEE_BPS = "0x24a9d853"
 CREATOR_TAX_BPS = "0xc1bb8901"
 QUOTE_EXACT_INPUT_SINGLE = "0xaa9d21cb"
-DEPTH_GUARD = "0x" + keccak(text="depthGuard()")[:4].hex()
 SETTLEMENT_ROUTER = "0x" + keccak(text="settlementRouter()")[:4].hex()
-DEPTH_SOURCE = "0x" + keccak(text="source()")[:4].hex()
-DEPTH_QUOTER = "0x" + keccak(text="quoter()")[:4].hex()
-DEPTH_SAFETY_BPS = "0x" + keccak(text="safetyBps()")[:4].hex()
+CONTROLLER = "0x" + keccak(text="controller()")[:4].hex()
+ROUTER_SOURCE = "0x" + keccak(text="source()")[:4].hex()
+ROUTER_FACTORY = "0x" + keccak(text="factory()")[:4].hex()
+CURVE_TOKEN = "0x" + keccak(text="token()")[:4].hex()
+CURVE_PAIR_TOKEN = "0x" + keccak(text="pairToken()")[:4].hex()
+CURVE_GRADUATION_THRESHOLD = "0x" + keccak(text="graduationThreshold()")[:4].hex()
+CURVE_REAL_QUOTE = "0x" + keccak(text="realQuoteReserve()")[:4].hex()
+TOTAL_SUPPLY = "0x18160ddd"
+OPEN_MINT_BPS = "0x" + keccak(text="OPEN_MINT_BPS()")[:4].hex()
+ACTIVE_POSITION_COUNT = "0x" + keccak(text="activePositionCount(address)")[:4].hex()
+FEE_POLICY = "0x" + keccak(text="feePolicy()")[:4].hex()
+MIN_FEE_PIPS = "0x" + keccak(text="MIN_FEE_PIPS()")[:4].hex()
+MAX_FEE_PIPS = "0x" + keccak(text="MAX_FEE_PIPS()")[:4].hex()
+FEE_STEP_PIPS = "0x" + keccak(text="FEE_STEP_PIPS()")[:4].hex()
+POOL_MANAGER = "0x" + keccak(text="poolManager()")[:4].hex()
+POSITION_MANAGER = "0x" + keccak(text="positionManager()")[:4].hex()
 
 LAUNCH_TYPES = ["address", "address", "address", "address", "address", "uint256", "uint24",
                 "int24", "uint16", "bool", "uint8", "uint256", "uint256", "uint256", "bool"]
-CONFIG_TYPES = ["uint160", "uint128", "uint128", "int24", "int24", "int24", "uint64"]
+CONFIG_TYPES = ["uint160", "uint128[3]", "uint128[3]", "int24", "int24[3]", "int24[3]", "uint64"]
+CONFIGURE_DATA_HEX_LENGTH = 2 + 8 + 64 * 18  # address, offset, bytes length, 15 plan words
 TICK_RATIOS = (
     0xfffcb933bd6fad37aa2d162d1a594001, 0xfff97272373d413259a46990580e213a,
     0xfff2e50f5f656932ef12357cf3c7fdcc, 0xffe5caca7e10e4e61c3624eaa0941cd0,
@@ -161,26 +170,12 @@ def align_up(value: int, spacing: int) -> int:
     return -((-value) // spacing) * spacing
 
 
-def ceil_sqrt_ratio(numerator: int, denominator: int) -> int:
-    value = isqrt(ceil_div(numerator, denominator))
-    return value if value * value * denominator >= numerator else value + 1
-
-
 def amount0_ceil(liquidity: int, lower_sqrt: int, upper_sqrt: int) -> int:
     return ceil_div(ceil_div((liquidity << 96) * (upper_sqrt - lower_sqrt), upper_sqrt), lower_sqrt)
 
 
 def amount1_ceil(liquidity: int, lower_sqrt: int, upper_sqrt: int) -> int:
     return ceil_div(liquidity * (upper_sqrt - lower_sqrt), Q96)
-
-
-def required_q_at_first_buy(max_x: int, boundary_sqrt: int, quote_is_0: bool) -> int:
-    """Match OpenExecutableDepthGuard's conservative Q128 price rounding."""
-    ratio_x128 = boundary_sqrt * boundary_sqrt // (1 << 64)
-    if ratio_x128 == 0:
-        raise WaitForPrice("boundary price is too small")
-    return (ceil_div(max_x * Q128, ratio_x128) if quote_is_0 else
-            ceil_div(max_x * (ratio_x128 + 1), Q128))
 
 
 def liquidity_for_budget(budget: int, lower_sqrt: int, upper_sqrt: int, quote_is_0: bool) -> int:
@@ -197,21 +192,15 @@ def liquidity_for_budget(budget: int, lower_sqrt: int, upper_sqrt: int, quote_is
 
 @dataclass(frozen=True)
 class PlanSettings:
-    budget_bps: int = 2500
     utilization_bps: int = 9500
-    safety_bps: int = 1500
-    quote_size_multiple: int = 2
     tick_spacing: int = 60
-    band_width_ticks: int = 1200
-    gap_ticks: int = 60
     ttl_seconds: int = 120
     max_snapshot_age_seconds: int = 20
 
     def validate(self) -> None:
-        if (not 1 <= self.budget_bps <= 10000 or not 1 <= self.utilization_bps <= 10000 or
-                not 1 <= self.safety_bps < 10000 or not 1 <= self.quote_size_multiple <= 10 or
-                not 1 <= self.tick_spacing <= 32767 or not 1 <= self.band_width_ticks <= 100000 or
-                not 1 <= self.gap_ticks <= 10000 or not 30 <= self.ttl_seconds <= 3600 or
+        if (not 1 <= self.utilization_bps <= 10000 or
+                not 1 <= self.tick_spacing <= 32767 or
+                not 30 <= self.ttl_seconds <= 900 or
                 not 1 <= self.max_snapshot_age_seconds <= 120):
             raise KeeperError("invalid planner setting")
 
@@ -220,99 +209,122 @@ class PlanSettings:
 class OpenPlan:
     token: str
     starting_sqrt_price_x96: int
-    liquidity: int
-    max_quote_in: int
+    liquidity: tuple[int, int, int]
+    max_quote_in: tuple[int, int, int]
     tick_spacing: int
-    tick_lower: int
-    tick_upper: int
+    tick_lower: tuple[int, int, int]
+    tick_upper: tuple[int, int, int]
     deadline: int
-    sample_x_in: int
-    executable_q_out: int
-    safe_q_out: int
+    minted_quote: tuple[int, int, int]
+    x_total_supply: int
+    q_total_supply: int
+    phantom_quote: int
+    graduation_threshold: int
     quote_is_0: bool
 
-    def abi_config(self) -> tuple[int, int, int, int, int, int, int]:
+    def abi_config(self) -> tuple[Any, ...]:
         return (self.starting_sqrt_price_x96, self.liquidity, self.max_quote_in,
                 self.tick_spacing, self.tick_lower, self.tick_upper, self.deadline)
 
 
-def plan_position(token: str, q: str, reference_sqrt: int, idle_q: int, x_to_q_quote: Any,
+def floor_tick_ratio(numerator: int, denominator: int) -> int:
+    """Largest v4 tick no higher than an exact token1/token0 raw price."""
+    if numerator <= 0 or denominator <= 0:
+        raise WaitForPrice("price ratio must be positive")
+    scaled = numerator * Q192
+    if (MIN_SQRT * MIN_SQRT * denominator > scaled or
+            MAX_SQRT * MAX_SQRT * denominator <= scaled):
+        raise WaitForPrice("deterministic price exceeds v4 tick range")
+    lo, hi = MIN_TICK, MAX_TICK
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if sqrt_at_tick(mid) ** 2 * denominator <= scaled:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+def ceil_tick_ratio(numerator: int, denominator: int) -> int:
+    tick = floor_tick_ratio(numerator, denominator)
+    if sqrt_at_tick(tick) ** 2 * denominator < numerator * Q192:
+        tick += 1
+    return tick
+
+
+def sequential_mints(q_supply: int) -> tuple[int, int, int]:
+    if q_supply <= 0:
+        raise WaitForPrice("Q total supply is zero")
+    supply = q_supply
+    mints: list[int] = []
+    for _ in range(3):
+        minted = supply // 100  # Q.OPEN_MINT_BPS == 100, checked at startup.
+        if not 0 < minted <= MAX_UINT128:
+            raise WaitForPrice("1% Q mint is outside uint128 range")
+        mints.append(minted)
+        supply += minted
+    return tuple(mints)  # type: ignore[return-value]
+
+
+def plan_position(token: str, q: str, x_supply: int, q_supply: int,
+                  phantom_quote: int, graduation_threshold: int,
                   block_time: int, settings: PlanSettings) -> OpenPlan:
-    """Build a Q-only band against the executable sale of its full X exposure."""
+    """Build nested Q-only bands at p0→R*p0, 2R*p0, and 10R*p0."""
     settings.validate()
     token, q = watch.address(token), watch.address(q)
-    if token == q or not MIN_SQRT <= reference_sqrt < MAX_SQRT:
-        raise WaitForPrice("invalid token or guard reference")
-    budget = min(idle_q * settings.budget_bps // 10000, MAX_UINT128)
-    if budget == 0:
-        raise WaitForPrice("vault has no budgeted idle Q")
+    if token == q or x_supply <= 0 or phantom_quote <= 0 or graduation_threshold <= 0:
+        raise WaitForPrice("invalid Pons launch economics")
+    mints = sequential_mints(q_supply)
+    # p0 is the first new 1% mint divided by the launched X supply. Every
+    # ratio below uses atomic units, the exact units v4 PoolManager consumes.
+    p_num, p_den = mints[0], x_supply
+    r_num = (phantom_quote + graduation_threshold) ** 2
+    r_den = phantom_quote ** 2
     quote_is_0 = int(q, 16) < int(token, 16)
-    spot_x = (ceil_div(budget * reference_sqrt * reference_sqrt, Q192) if quote_is_0
-              else ceil_div(budget * Q192, reference_sqrt * reference_sqrt))
-    sample_x = spot_x * settings.quote_size_multiple
-    reference_tick = floor_tick(reference_sqrt)
-    width = align_up(settings.band_width_ticks, settings.tick_spacing)
-    target = budget * settings.utilization_bps // 10000
-    # Moving the band farther from spot can increase the X bought by the LP.
-    # Requote that *whole* inventory and widen again until its own sale quote
-    # supports the band. A depth curve with no fixed point must be skipped.
-    for _ in range(12):
-        if not 0 < sample_x <= MAX_UINT128:
-            raise WaitForPrice("full X exposure is outside uint128 quote range")
-        executable_q = int(x_to_q_quote(sample_x))
-        safe_q = executable_q * (10000 - settings.safety_bps) // 10000
-        if safe_q == 0:
-            raise WaitForPrice("executable sale returns too little Q")
+    lowers: list[int] = []
+    uppers: list[int] = []
+    liquidities: list[int] = []
+    limits: list[int] = []
+    for multiple, minted in zip((1, 2, 10), mints):
+        high_num, high_den = p_num * r_num * multiple, p_den * r_den
         if quote_is_0:
-            # Q is currency0 and the sole LP asset below tickLower.
-            boundary_sqrt = ceil_sqrt_ratio(sample_x * Q192, safe_q)
-            if boundary_sqrt >= MAX_SQRT:
-                raise WaitForPrice("sale floor exceeds tick range")
-            boundary_tick = floor_tick(max(MIN_SQRT, boundary_sqrt))
-            if sqrt_at_tick(boundary_tick) < boundary_sqrt:
-                boundary_tick += 1
-            lower = align_up(max(reference_tick, boundary_tick) + settings.gap_ticks,
-                             settings.tick_spacing)
-            upper = lower + width
+            # token1/token0 is X/Q, the reciprocal of Q/X.
+            lower = align_down(floor_tick_ratio(high_den, high_num), settings.tick_spacing)
+            upper = align_up(ceil_tick_ratio(p_den, p_num), settings.tick_spacing)
         else:
-            # Q is currency1 and the sole LP asset above tickUpper.
-            boundary_sqrt = isqrt(safe_q * Q192 // sample_x)
-            if boundary_sqrt < MIN_SQRT:
-                raise WaitForPrice("sale floor is below tick range")
-            boundary_tick = floor_tick(min(boundary_sqrt, MAX_SQRT - 1))
-            upper = align_down(min(reference_tick, boundary_tick) - settings.gap_ticks,
-                               settings.tick_spacing)
-            lower = upper - width
+            lower = align_down(floor_tick_ratio(p_num, p_den), settings.tick_spacing)
+            upper = align_up(ceil_tick_ratio(high_num, high_den), settings.tick_spacing)
         if lower < MIN_TICK or upper > MAX_TICK or lower >= upper:
-            raise WaitForPrice("Q-only band is outside tick range")
+            raise WaitForPrice("deterministic band is outside v4 tick range")
         lower_sqrt, upper_sqrt = sqrt_at_tick(lower), sqrt_at_tick(upper)
-        if not (reference_sqrt <= lower_sqrt if quote_is_0 else reference_sqrt >= upper_sqrt):
-            raise KeeperError("planner violated the executor's Q-only condition")
+        target = minted * settings.utilization_bps // 10000
         liquidity = liquidity_for_budget(target, lower_sqrt, upper_sqrt, quote_is_0)
-        if liquidity == 0:
-            raise WaitForPrice("Q budget cannot mint positive liquidity")
-        spent_q = (amount0_ceil(liquidity, lower_sqrt, upper_sqrt) if quote_is_0
-                   else amount1_ceil(liquidity, lower_sqrt, upper_sqrt))
-        if spent_q > target or target > budget:
-            raise KeeperError("liquidity calculation exceeded Q budget")
-        max_x = (amount1_ceil(liquidity, lower_sqrt, upper_sqrt) if quote_is_0
-                 else amount0_ceil(liquidity, lower_sqrt, upper_sqrt))
-        if not 0 < max_x <= MAX_UINT128:
-            raise WaitForPrice("full X exposure is outside uint128 quote range")
-        full_quote = int(x_to_q_quote(max_x))
-        full_safe_q = full_quote * (10000 - settings.safety_bps) // 10000
-        if full_safe_q == 0:
-            raise WaitForPrice("full X exposure sale returns too little Q")
-        safe_floor = full_safe_q >= required_q_at_first_buy(
-            max_x, lower_sqrt if quote_is_0 else upper_sqrt, quote_is_0)
-        if safe_floor:
-            return OpenPlan(token, reference_sqrt, liquidity, budget, settings.tick_spacing,
-                            lower, upper, block_time + settings.ttl_seconds, max_x,
-                            full_quote, full_safe_q, quote_is_0)
-        if max_x == sample_x:
-            raise WaitForPrice("full X exposure sale cannot support Q-only band")
-        sample_x = max_x
-    raise WaitForPrice("full X exposure sale did not converge")
+        spent = (amount0_ceil(liquidity, lower_sqrt, upper_sqrt) if quote_is_0
+                 else amount1_ceil(liquidity, lower_sqrt, upper_sqrt))
+        if liquidity == 0 or spent == 0 or spent > target or target > minted:
+            raise WaitForPrice("1% Q mint cannot fund a positive band")
+        lowers.append(lower)
+        uppers.append(upper)
+        liquidities.append(liquidity)
+        limits.append(minted)
+    if quote_is_0:
+        if not (lowers[0] > lowers[1] > lowers[2]):
+            raise WaitForPrice("three rounded Pons bands are not distinct")
+        initial_tick = lowers[2] - settings.tick_spacing
+    else:
+        if not (uppers[0] < uppers[1] < uppers[2]):
+            raise WaitForPrice("three rounded Pons bands are not distinct")
+        initial_tick = uppers[2] + settings.tick_spacing
+    if not MIN_TICK <= initial_tick <= MAX_TICK:
+        raise WaitForPrice("Q-only initialization exceeds v4 tick range")
+    initial_sqrt = sqrt_at_tick(initial_tick)
+    if not (initial_sqrt < sqrt_at_tick(lowers[2]) if quote_is_0
+            else initial_sqrt > sqrt_at_tick(uppers[2])):
+        raise KeeperError("initialization is not beyond all Q-only bands")
+    return OpenPlan(token, initial_sqrt, tuple(liquidities), tuple(limits),
+                    settings.tick_spacing, tuple(lowers), tuple(uppers),
+                    block_time + settings.ttl_seconds, mints, x_supply, q_supply,
+                    phantom_quote, graduation_threshold, quote_is_0)
 
 
 def call_abi(rpc: watch.Rpc, to: str, selector_hex: str, inputs: list[str] | None = None,
@@ -336,6 +348,17 @@ def read_uint(rpc: watch.Rpc, contract: str, method: str, output_type: str = "ui
     return int(call_abi(rpc, contract, method, outputs=[output_type])[0])
 
 
+def require_code(rpc: watch.Rpc, contract: str, name: str) -> None:
+    code = rpc.call("eth_getCode", [contract, "latest"])
+    if (not isinstance(code, str) or len(code) <= 2 or len(code) % 2 != 0 or
+            not code.startswith("0x")):
+        raise KeeperError(f"{name} has no contract code")
+    try:
+        bytes.fromhex(code[2:])
+    except ValueError as exc:
+        raise KeeperError(f"{name} returned malformed contract code") from exc
+
+
 @dataclass(frozen=True)
 class Bindings:
     q: str
@@ -353,52 +376,70 @@ class Bindings:
 def verify_bindings(rpc: watch.Rpc, chain_id: int, q: str, guard: str, quoter: str,
                     configurator: str | None, safety_bps: int | None = 1500) -> Bindings:
     q, guard, quoter = watch.address(q), watch.address(guard), watch.address(quoter)
+    if chain_id != 4663:
+        raise KeeperError("Pons price keeper requires Robinhood chain 4663")
     if watch.quantity(rpc.call("eth_chainId", []), "chain ID") != chain_id:
         raise KeeperError("RPC chain ID differs from configured chain ID")
     executor = read_address(rpc, q, EXECUTOR)
-    for name, contract in (("Q", q), ("executor", executor), ("guard", guard), ("v4 Quoter", quoter)):
-        code = rpc.call("eth_getCode", [contract, "latest"])
-        if not isinstance(code, str) or code == "0x":
-            raise KeeperError(f"{name} has no contract code")
+    for name, contract in (("Q", q), ("executor", executor),
+                           ("Pons factory", watch.PONS_FACTORY),
+                           ("v4 PoolManager", POOL_MANAGER_ADDRESS),
+                           ("v4 PositionManager", POSITION_MANAGER_ADDRESS),
+                           ("v4 StateView", STATE_VIEW_ADDRESS)):
+        require_code(rpc, contract, name)
     if read_address(rpc, q, watch.PONS_FACTORY_GETTER) != watch.PONS_FACTORY:
         raise KeeperError("Q has a different Pons factory")
-    if read_address(rpc, executor, PRICE_GUARD) != guard:
-        raise KeeperError("executor has a different price guard")
-    if read_address(rpc, guard, QUOTE_TOKEN) != q or read_address(rpc, guard, watch.PONS_FACTORY_GETTER) != watch.PONS_FACTORY:
-        raise KeeperError("guard Q/factory binding mismatch")
+    if read_uint(rpc, q, OPEN_MINT_BPS, "uint16") != 100:
+        raise KeeperError("Q 1% mint rule differs from planner")
+    if (read_address(rpc, executor, CONTROLLER) != q or
+            read_address(rpc, executor, QUOTE_TOKEN) != q):
+        raise KeeperError("executor controller/Q binding mismatch")
+    if (read_address(rpc, executor, POOL_MANAGER) != POOL_MANAGER_ADDRESS or
+            read_address(rpc, executor, POSITION_MANAGER) != POSITION_MANAGER_ADDRESS or
+            read_address(rpc, executor, STATE_VIEW) != STATE_VIEW_ADDRESS):
+        raise KeeperError("executor v4 infrastructure differs from Robinhood deployment")
+    policy = read_address(rpc, q, FEE_POLICY)
+    if policy == ZERO:
+        raise KeeperError("Q has no static fee policy")
+    require_code(rpc, policy, "static fee policy")
+    if (read_address(rpc, policy, CONTROLLER) != q or
+            read_uint(rpc, policy, MIN_FEE_PIPS, "uint24") != 50_000 or
+            read_uint(rpc, policy, MAX_FEE_PIPS, "uint24") != 500_000 or
+            read_uint(rpc, policy, FEE_STEP_PIPS, "uint24") != 10_000):
+        raise KeeperError("Q static fee policy is outside 5-50% range")
     if configurator is not None and read_address(rpc, q, PRICE_CONFIGURATOR) != configurator:
         raise KeeperError("signing account is not Q.priceConfigurator")
-    state_view = read_address(rpc, guard, STATE_VIEW)
-    state_view_code = rpc.call("eth_getCode", [state_view, "latest"])
-    if not isinstance(state_view_code, str) or state_view_code == "0x":
-        raise KeeperError("guard StateView has no contract code")
-    raw_id = rpc.call("eth_call", [{"to": guard, "data": QUOTE_ETH_POOL_ID}, "latest"])
-    if not isinstance(raw_id, str) or not watch.HASH.fullmatch(raw_id):
-        raise KeeperError("guard returned invalid Q/ETH pool ID")
-    fee = read_uint(rpc, guard, QUOTE_ETH_FEE, "uint24")
-    spacing = read_uint(rpc, guard, QUOTE_ETH_SPACING, "int24")
-    if fee <= 0 or spacing <= 0:
-        raise KeeperError("guard Q/ETH pool settings are invalid")
-    pons_hook = read_address(rpc, watch.PONS_FACTORY, MEME_HOOK)
-    depth_guard = read_address(rpc, executor, DEPTH_GUARD)
     router = read_address(rpc, executor, SETTLEMENT_ROUTER)
-    if depth_guard == ZERO or router == ZERO:
-        raise KeeperError("executor has no bound depth guard or settlement router")
-    for name, contract in (("depth guard", depth_guard), ("settlement router", router)):
-        code = rpc.call("eth_getCode", [contract, "latest"])
-        if not isinstance(code, str) or code == "0x":
-            raise KeeperError(f"{name} has no contract code")
-    if (read_address(rpc, depth_guard, DEPTH_SOURCE) != executor or
-            read_address(rpc, depth_guard, PRICE_GUARD) != guard or
-            read_address(rpc, depth_guard, SETTLEMENT_ROUTER) != router or
-            read_address(rpc, depth_guard, QUOTE_TOKEN) != q or
-            read_address(rpc, depth_guard, watch.PONS_FACTORY_GETTER) != watch.PONS_FACTORY or
-            read_address(rpc, depth_guard, DEPTH_QUOTER) != quoter):
-        raise KeeperError("bound depth guard configuration mismatch")
-    if safety_bps is not None and read_uint(rpc, depth_guard, DEPTH_SAFETY_BPS, "uint16") != safety_bps:
-        raise KeeperError("depth guard haircut differs from planner safety bps")
+    if router == ZERO:
+        raise KeeperError("executor has no bound settlement router")
+    require_code(rpc, router, "settlement router")
+    if (read_address(rpc, router, ROUTER_SOURCE) != executor or
+            read_address(rpc, router, QUOTE_TOKEN) != q or
+            read_address(rpc, router, ROUTER_FACTORY) != watch.PONS_FACTORY):
+        raise KeeperError("settlement router binding mismatch")
+    # The opening planner has no Q/ETH dependency. The optional guard route
+    # remains available to the separate exit and harvest keepers that import
+    # this module for executable settlement quotes.
+    state_view, raw_id, fee, spacing = ZERO, "0x" + "00" * 32, 0, 0
+    pons_hook = ZERO
+    if guard != ZERO:
+        for name, contract in (("guard", guard), ("v4 Quoter", quoter)):
+            require_code(rpc, contract, name)
+        if (read_address(rpc, guard, QUOTE_TOKEN) != q or
+                read_address(rpc, guard, watch.PONS_FACTORY_GETTER) != watch.PONS_FACTORY):
+            raise KeeperError("guard Q/factory binding mismatch")
+        state_view = read_address(rpc, guard, STATE_VIEW)
+        require_code(rpc, state_view, "guard StateView")
+        raw_id = rpc.call("eth_call", [{"to": guard, "data": QUOTE_ETH_POOL_ID}, "latest"])
+        if not isinstance(raw_id, str) or not watch.HASH.fullmatch(raw_id):
+            raise KeeperError("guard returned invalid Q/ETH pool ID")
+        fee = read_uint(rpc, guard, QUOTE_ETH_FEE, "uint24")
+        spacing = read_uint(rpc, guard, QUOTE_ETH_SPACING, "int24")
+        if fee <= 0 or spacing <= 0:
+            raise KeeperError("guard Q/ETH pool settings are invalid")
+        pons_hook = read_address(rpc, watch.PONS_FACTORY, MEME_HOOK)
     return Bindings(q, executor, guard, state_view, raw_id.lower(), fee, spacing,
-                    pons_hook, quoter, depth_guard)
+                    pons_hook, quoter, ZERO)
 
 
 def read_launch(rpc: watch.Rpc, token: str) -> tuple[Any, ...]:
@@ -433,25 +474,11 @@ def q_next_action_at(rpc: watch.Rpc, q: str, token: str) -> int:
         raise KeeperError("Q.launches nextActionAt is malformed") from exc
 
 
-def q_vault_balance(rpc: watch.Rpc, bindings: Bindings) -> int:
-    balance = int(call_abi(rpc, bindings.q, BALANCE_OF,
-                           ["address"], [bindings.executor], ["uint256"])[0])
-    reserved = read_uint(rpc, bindings.executor, RESERVED_HARVESTED_QUOTE)
-    if reserved > balance:
-        raise KeeperError("executor reserved harvested Q exceeds its Q balance")
-    return balance - reserved
-
-
 def latest_block_time(rpc: watch.Rpc) -> int:
     block = rpc.call("eth_getBlockByNumber", ["latest", False])
     if not isinstance(block, dict):
         raise KeeperError("latest block is missing")
     return watch.quantity(block.get("timestamp"), "block timestamp")
-
-
-def quote_eth_liquidity(rpc: watch.Rpc, bindings: Bindings) -> int:
-    return int(call_abi(rpc, bindings.state_view, GET_LIQUIDITY,
-                        ["bytes32"], [bytes.fromhex(bindings.quote_pool_id[2:])], ["uint128"])[0])
 
 
 class ExecutableQuoteProvider:
@@ -504,19 +531,6 @@ class ExecutableQuoteProvider:
         quote_key = (ZERO, self.bindings.q, self.bindings.quote_fee,
                      self.bindings.quote_spacing, ZERO)
         return self.quote_single(quote_key, True, eth_out)
-
-
-def guard_reference(rpc: watch.Rpc, bindings: Bindings, token: str) -> int:
-    try:
-        reference = int(call_abi(rpc, bindings.guard, REFERENCE,
-                                 ["address"], [token], ["uint160"])[0])
-        # Guard's own spot bound remains an independent condition on the
-        # proposed pool initialization price. The executor repeats this at mint.
-        call_abi(rpc, bindings.guard, VALIDATE,
-                 ["address", "uint160"], [token, reference], ["uint160"])
-        return reference
-    except (watch.WatcherError, KeeperError) as exc:
-        raise WaitForPrice("guard reference or spot validation unavailable") from exc
 
 
 @dataclass
@@ -765,47 +779,43 @@ def discover_launches(rpc: watch.Rpc, state: KeeperState, store: KeeperStore,
     return count
 
 
-def existing_config(rpc: watch.Rpc, executor: str, token: str) -> tuple[int, ...]:
-    return tuple(int(value) for value in call_abi(rpc, executor, OPEN_CONFIGS,
-                                                  ["address"], [token], CONFIG_TYPES))
+def existing_config(rpc: watch.Rpc, executor: str, token: str) -> tuple[Any, ...]:
+    # Solidity omits all fixed-array struct fields from this autogenerated
+    # getter. It cannot prove that an armed config still has the intended
+    # ranges or spend caps, so the live keeper refreshes it instead.
+    return call_abi(rpc, executor, OPEN_CONFIGS, ["address"], [token],
+                    ["uint160", "int24", "uint64"])
 
 
 def existing_config_safe(rpc: watch.Rpc, bindings: Bindings, plan: OpenPlan,
-                         existing: tuple[int, ...], now: int) -> bool:
-    sqrt_price, liquidity, max_q, spacing, lower, upper, deadline = existing
-    if (liquidity != plan.liquidity or max_q <= 0 or max_q > plan.max_quote_in or
-            spacing != plan.tick_spacing or lower != plan.tick_lower or
-            upper != plan.tick_upper or lower >= upper or
-            lower < MIN_TICK or upper > MAX_TICK or lower % spacing or upper % spacing or
-            deadline < now + 30):
-        return False
+                         existing: tuple[Any, ...], now: int) -> bool:
     try:
-        lower_sqrt, upper_sqrt = sqrt_at_tick(lower), sqrt_at_tick(upper)
-        call_abi(rpc, bindings.guard, VALIDATE, ["address", "uint160"],
-                 [plan.token, sqrt_price], ["uint160"])
-    except (KeeperError, watch.WatcherError):
+        sqrt_price, liquidity, max_q, spacing, lower, upper, deadline = existing
+        liquidity = tuple(int(x) for x in liquidity)
+        max_q = tuple(int(x) for x in max_q)
+        lower = tuple(int(x) for x in lower)
+        upper = tuple(int(x) for x in upper)
+        if (int(sqrt_price) != plan.starting_sqrt_price_x96 or
+                liquidity != plan.liquidity or int(spacing) != plan.tick_spacing or
+                lower != plan.tick_lower or upper != plan.tick_upper or
+                int(deadline) < now + 30 or len(max_q) != 3):
+            return False
+        for i in range(3):
+            lower_sqrt, upper_sqrt = sqrt_at_tick(lower[i]), sqrt_at_tick(upper[i])
+            spent = (amount0_ceil(liquidity[i], lower_sqrt, upper_sqrt) if plan.quote_is_0
+                     else amount1_ceil(liquidity[i], lower_sqrt, upper_sqrt))
+            if not 0 < spent <= max_q[i] <= plan.max_quote_in[i]:
+                return False
+        return True
+    except (ValueError, TypeError, IndexError, KeeperError):
         return False
-    if plan.quote_is_0:
-        if (plan.starting_sqrt_price_x96 > lower_sqrt or
-                plan.safe_q_out < required_q_at_first_buy(plan.sample_x_in,
-                                                            lower_sqrt, True)):
-            return False
-        amount = amount0_ceil(liquidity, lower_sqrt, upper_sqrt)
-    else:
-        if (plan.starting_sqrt_price_x96 < upper_sqrt or
-                plan.safe_q_out < required_q_at_first_buy(plan.sample_x_in,
-                                                            upper_sqrt, False)):
-            return False
-        amount = amount1_ceil(liquidity, lower_sqrt, upper_sqrt)
-    return amount <= max_q <= plan.max_quote_in
 
 
 def make_plan(rpc: watch.Rpc, bindings: Bindings, token: str,
-              settings: PlanSettings, quotes: ExecutableQuoteProvider) -> OpenPlan:
+              settings: PlanSettings, quotes: ExecutableQuoteProvider | None = None) -> OpenPlan:
     anchor_head = watch.chain_head(rpc)
     anchor_hash = watch.block_hash(rpc, anchor_head)
     snapshot = PinnedRpc(rpc, anchor_head)
-    snapshot_quotes = quotes.at_block(anchor_head) if hasattr(quotes, "at_block") else quotes
     launch = read_launch(snapshot, token)
     if watch.address(launch[4]) != ZERO:
         raise UnsupportedLaunch("Pons launch is not paired with native ETH")
@@ -813,14 +823,31 @@ def make_plan(rpc: watch.Rpc, bindings: Bindings, token: str,
         raise WaitForPrice("Pons launch is in swept phase 1")
     if int(launch[10]) not in (0, 2):
         raise UnsupportedLaunch("Pons launch is no longer in phase 0 or 2")
-    if quote_eth_liquidity(snapshot, bindings) <= 0:
-        raise WaitForPrice("Q/ETH pool has no liquidity")
-    reference = guard_reference(snapshot, bindings, token)
-    balance = q_vault_balance(snapshot, bindings)
+    curve = watch.address(launch[1])
+    if snapshot.call("eth_getCode", [curve, hex(anchor_head)]) == "0x":
+        raise WaitForPrice("Pons curve has no code")
+    if (read_address(snapshot, curve, ROUTER_FACTORY) != watch.PONS_FACTORY or
+            read_address(snapshot, curve, CURVE_TOKEN) != token or
+            read_address(snapshot, curve, CURVE_PAIR_TOKEN) != ZERO):
+        raise WaitForPrice("Pons curve does not match factory launch")
+    threshold = int(launch[5])
+    if (threshold <= 0 or
+            read_uint(snapshot, curve, CURVE_GRADUATION_THRESHOLD) != threshold):
+        raise WaitForPrice("Pons graduation threshold mismatch")
+    quote_reserve, _ = call_abi(snapshot, curve, GET_RESERVES,
+                                outputs=["uint256", "uint256"])
+    real_quote = read_uint(snapshot, curve, CURVE_REAL_QUOTE)
+    if quote_reserve <= real_quote:
+        raise WaitForPrice("Pons phantom quote reserve is unavailable")
+    active = int(call_abi(snapshot, bindings.executor, ACTIVE_POSITION_COUNT,
+                          ["address"], [token], ["uint8"])[0])
+    if active != 0:
+        raise UnsupportedLaunch("X/Q pool already has an active position")
+    x_supply = read_uint(snapshot, token, TOTAL_SUPPLY)
+    q_supply = read_uint(snapshot, bindings.q, TOTAL_SUPPLY)
     snapshot_time = latest_block_time(snapshot)
-    plan = plan_position(token, bindings.q, reference, balance,
-                         lambda x: snapshot_quotes.quote_x_to_q(token, launch, x),
-                         snapshot_time, settings)
+    plan = plan_position(token, bindings.q, x_supply, q_supply,
+                         quote_reserve - real_quote, threshold, snapshot_time, settings)
     if watch.block_hash(rpc, anchor_head) != anchor_hash:
         raise WaitForPrice("pinned price block changed during planning")
     if latest_block_time(rpc) - snapshot_time > settings.max_snapshot_age_seconds:
@@ -884,8 +911,20 @@ class KeeperSigner:
             raise KeeperError("attempted non-keeper transaction")
         if kind == "process" and data != PROCESS_NEXT:
             raise KeeperError("processNext payload must have no arguments")
-        if kind == "configure" and len(data) != 2 + 8 + 64 * 8:
+        if kind == "configure" and len(data) != CONFIGURE_DATA_HEX_LENGTH:
             raise KeeperError("configureOpen payload length is invalid")
+        if kind == "configure":
+            try:
+                encoded_token, encoded = decode(["address", "bytes"], bytes.fromhex(data[10:]))
+                config = decode(CONFIG_TYPES, encoded)
+                canonical = CONFIGURE + encode(["address", "bytes"],
+                                                [encoded_token, encode(CONFIG_TYPES, config)]).hex()
+            except (ValueError, DecodingError) as exc:
+                raise KeeperError("configureOpen payload is malformed") from exc
+            if (watch.address(encoded_token) != token or data.lower() != canonical.lower() or
+                    any(int(x) == 0 for x in config[1]) or
+                    any(int(x) == 0 for x in config[2])):
+                raise KeeperError("configureOpen payload is outside planned bounds")
         gas_estimate = watch.quantity(self.rpc.call("eth_estimateGas", [{"from": self.signer,
                                                "to": self.bindings.q, "data": data}]), "gas estimate")
         gas = ceil_div(gas_estimate * 120, 100)
@@ -932,7 +971,7 @@ class KeeperSigner:
                 not watch.HASH.fullmatch(tx_hash) or not isinstance(raw_hex, str) or
                 not raw_hex.startswith("0x") or len(raw_hex) > 4098 or len(raw_hex) % 2):
             raise KeeperError("pending keeper transaction is malformed")
-        if (kind == "process" and data != PROCESS_NEXT) or (kind == "configure" and len(data) != 2 + 8 + 64 * 8):
+        if (kind == "process" and data != PROCESS_NEXT) or (kind == "configure" and len(data) != CONFIGURE_DATA_HEX_LENGTH):
             raise KeeperError("pending keeper transaction has invalid method payload")
         try:
             raw = bytes.fromhex(raw_hex[2:])
@@ -953,11 +992,14 @@ class KeeperSigner:
             raise KeeperError("pending signed transaction is outside keeper permissions or caps")
         if kind == "configure":
             try:
-                encoded_token, config = decode(["address", "(uint160,uint128,uint128,int24,int24,int24,uint64)"],
-                                               bytes.fromhex(data[10:]))
+                encoded_token, config_bytes = decode(["address", "bytes"],
+                                                     bytes.fromhex(data[10:]))
+                config = decode(CONFIG_TYPES, config_bytes)
             except (ValueError, DecodingError) as exc:
                 raise KeeperError("pending configureOpen payload cannot be decoded") from exc
-            if watch.address(encoded_token) != token or config[1] == 0 or config[2] == 0:
+            if (watch.address(encoded_token) != token or
+                    any(int(value) == 0 for value in config[1]) or
+                    any(int(value) == 0 for value in config[2])):
                 raise KeeperError("pending configureOpen token or budget is invalid")
         return kind, token, tx_hash, nonce
 
@@ -985,9 +1027,8 @@ class KeeperSigner:
                     if q_launch_state(self.rpc, state.q, token)[0] != 1:
                         raise KeeperError("unknown pending configureOpen no longer targets a queued launch")
                     fresh = make_plan(self.rpc, self.bindings, token, settings, quotes)
-                    config = tuple(int(x) for x in decode(
-                        ["address", "(uint160,uint128,uint128,int24,int24,int24,uint64)"],
-                        bytes.fromhex(pending["data"][10:]))[1])
+                    encoded = decode(["address", "bytes"], bytes.fromhex(pending["data"][10:]))[1]
+                    config = decode(CONFIG_TYPES, encoded)
                     if not existing_config_safe(self.rpc, self.bindings, fresh, config, latest_block_time(self.rpc)):
                         raise KeeperError("unknown pending configureOpen is stale; inspect nonce before replacing")
                 try:
@@ -1010,8 +1051,8 @@ class KeeperSigner:
 
 
 def configure_data(plan: OpenPlan) -> str:
-    return CONFIGURE + encode(["address", "(uint160,uint128,uint128,int24,int24,int24,uint64)"],
-                              [plan.token, plan.abi_config()]).hex()
+    return CONFIGURE + encode(["address", "bytes"],
+                              [plan.token, encode(CONFIG_TYPES, plan.abi_config())]).hex()
 
 
 def _take_scheduled(state: KeeperState, priority: bool, seen: set[str]) -> str | None:
@@ -1127,9 +1168,7 @@ def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: Kee
             continue
         except WaitForPrice as error:
             reason = str(error)
-            if reason in ("Pons launch is in swept phase 1",
-                          "Q/ETH pool has no liquidity",
-                          "vault has no budgeted idle Q") and _drop_priority(state, token):
+            if reason == "Pons launch is in swept phase 1" and _drop_priority(state, token):
                 store.save(state)
             waiting[reason] = waiting.get(reason, 0) + 1
             continue
@@ -1140,14 +1179,9 @@ def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: Kee
         if q_launch_state(rpc, bindings.q, token)[0] != 1:
             waiting["launch_stage_changed_during_plan"] = waiting.get("launch_stage_changed_during_plan", 0) + 1
             continue
+        # The public executor getter omits the three fixed arrays. A fresh
+        # configuration is the only fail-closed way to verify all bands.
         should_configure = True
-        if configured:
-            try:
-                existing = existing_config(rpc, bindings.executor, token)
-                should_configure = not existing_config_safe(rpc, bindings, plan, existing,
-                                                             latest_block_time(rpc))
-            except (watch.WatcherError, KeeperError):
-                should_configure = True
         if should_configure:
             try:
                 signer.submit("configure", token, configure_data(plan), state, store)
@@ -1180,8 +1214,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--http-url", default=os.environ.get("PONS_HTTP_RPC_URL"))
     parser.add_argument("--chain-id", type=int, default=os.environ.get("PONS_CHAIN_ID"))
     parser.add_argument("--q", default=os.environ.get("PONS_Q_ADDRESS"))
-    parser.add_argument("--guard", default=os.environ.get("PONS_PRICE_GUARD_ADDRESS"))
-    parser.add_argument("--quoter", default=QUOTER)
     parser.add_argument("--start-block", type=int)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--confirmations", type=int, default=3)
@@ -1190,17 +1222,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-token-checks", type=int, default=12)
     parser.add_argument("--max-plans-per-cycle", type=int, default=2)
     parser.add_argument("--poll-seconds", type=float, default=10)
-    parser.add_argument("--budget-bps", type=int, default=2500)
     parser.add_argument("--utilization-bps", type=int, default=9500)
-    parser.add_argument("--safety-bps", type=int, default=1500)
-    parser.add_argument("--quote-size-multiple", type=int, default=2)
     parser.add_argument("--tick-spacing", type=int, default=60)
-    parser.add_argument("--band-width-ticks", type=int, default=1200)
-    parser.add_argument("--gap-ticks", type=int, default=60)
     parser.add_argument("--ttl-seconds", type=int, default=120)
     parser.add_argument("--max-snapshot-age-seconds", type=int, default=20)
     parser.add_argument("--max-config-gas", type=int, default=500000)
-    parser.add_argument("--max-process-gas", type=int, default=3500000)
+    parser.add_argument("--max-process-gas", type=int, default=10000000)
     parser.add_argument("--max-fee-gwei", default="5")
     parser.add_argument("--max-priority-gwei", default="1")
     parser.add_argument("--receipt-timeout", type=int, default=180)
@@ -1210,20 +1237,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.live and not args.once:
         parser.error("--live requires --once; run live price/exit cycles serially")
-    if not args.http_url or not args.chain_id or not args.q or not args.guard:
-        parser.error("HTTP URL, chain ID, Q, and guard are required via flags or environment")
+    if not args.http_url or not args.chain_id or not args.q:
+        parser.error("HTTP URL, chain ID, and Q are required via flags or environment")
     if (args.confirmations < 1 or args.block_span < 1 or
             args.max_discovery_ranges < 1 or args.max_token_checks < 1 or
             args.max_plans_per_cycle < 1 or
             args.poll_seconds <= 0 or
             args.max_config_gas < 21000 or args.max_process_gas < 21000 or args.receipt_timeout < 1):
         parser.error("invalid confirmation, span, poll, gas, or receipt setting")
-    settings = PlanSettings(args.budget_bps, args.utilization_bps, args.safety_bps,
-                            args.quote_size_multiple, args.tick_spacing,
-                            args.band_width_ticks, args.gap_ticks, args.ttl_seconds,
+    settings = PlanSettings(args.utilization_bps, args.tick_spacing, args.ttl_seconds,
                             args.max_snapshot_age_seconds)
     settings.validate()
-    q, guard = watch.address(args.q), watch.address(args.guard)
+    q, guard = watch.address(args.q), ZERO
     rpc = watch.HttpRpc(args.http_url)
     private_key = os.environ.get("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY") if args.live else None
     if args.live and not private_key:
@@ -1232,9 +1257,9 @@ def main(argv: list[str] | None = None) -> int:
         signer_address = Account.from_key(private_key).address.lower() if private_key else None
     except Exception as exc:
         raise KeeperError("priceConfigurator private key is invalid") from exc
-    bindings = verify_bindings(rpc, args.chain_id, q, guard, args.quoter,
-                               signer_address, settings.safety_bps)
-    quotes = ExecutableQuoteProvider(rpc, bindings)
+    bindings = verify_bindings(rpc, args.chain_id, q, guard, QUOTER,
+                               signer_address, None)
+    quotes = None
     fee_cap, priority_cap = watch.gwei(args.max_fee_gwei), watch.gwei(args.max_priority_gwei)
     if priority_cap > fee_cap:
         raise KeeperError("priority fee cap exceeds max fee cap")

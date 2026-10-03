@@ -1,38 +1,59 @@
-# Automated Pons Q-only price keeper
+# Deterministic Pons X/Q opening keeper
 
-`pons_price_keeper.py` is the offchain companion to the owner launch watcher.
-It scans confirmed Pons `TokenLaunched` logs into its own durable `.local`
-pending-token queue, waits for `Q.launches(token).stage == Queued`, and polls
-the deployed `OpenPriceGuard` and executable swap quotes. Newer launches are
-considered first, matching Q's LIFO entry order. Tokens that have not yet
-been enqueued remain in the queue across restarts. Phase 1 and empty Q/ETH
-liquidity remain pending; non-ETH Pons pairs are removed as unsupported.
+`pons_price_keeper.py` scans confirmed Pons `TokenLaunched` logs and configures a
+new hookless Uniswap v4 X/Q pool for each queued ETH-paired Pons launch. It
+proposes **three Q-only LP positions in the same pool**. The pool's static fee
+is selected separately by Q's `StaticNextPoolFee` policy from 5% through 50%
+in one-percentage-point steps. The keeper does not use X/ETH, Q/ETH, a price
+oracle, or an executable sale quote to place the bands. The price after pool
+creation is set by trades, not by this calculation.
 
-All factory, guard, StateView, curve, vault, and Quoter planning reads are
-pinned to one recent block. The block hash is checked before and after
-planning, and a snapshot more than 20 seconds old is discarded. The
-initialization price is the guard's **marginal spot**
-`referenceSqrtPriceX96(token)`, checked with `guard.validate`. A separate
-size-aware X→ETH→Q sale quote determines the maximum Q/X price the LP band
-may pay when it begins buying X. Phase 0 uses Pons's integer-exact reserve,
-base fee, and creator tax sale formula. Phase 2 uses Robinhood's official v4
-Quoter for X→ETH. Both use the Quoter for ETH→Q. The first quote size defaults
-to twice the X amount implied by the budget at spot. The keeper then derives
-the **maximum X inventory of the entire planned band** from its liquidity and
-ticks, requotes that full amount, and widens or skips until the discounted
-full-inventory sale rate supports the band. The executable Q proceeds receive
-a 15% safety haircut. For either token address ordering, the keeper checks
-that the starting price is Q-only and that the band's first purchase price
-cannot exceed that discounted full-inventory rate. A thin route may have no
-acceptable band; it is skipped.
+## Deterministic price and funding
 
-The default position budget is at most **25%** of idle Q in the executor,
-where idle Q is `Q.balanceOf(executor) -
-executor.reservedHarvestedQuote()`. If the reserve exceeds the balance, the
-keeper stops. Liquidity is chosen with v4's rounded-up amount formulas to
-spend at most 95% of that budget; `maxQuoteIn` is the full 25% cap. The
-position uses a configurable tick spacing, 1,200-tick width, and 60-tick
-gap by default. The initial configuration expires after 120 seconds.
+All amounts in the formula are ERC-20 atomic units. At one recent pinned
+block, read `S = Q.totalSupply()` and `T = X.totalSupply()`. Q's open wrapper
+mints three new tranches before calling the executor:
+
+```text
+m0 = floor(S / 100)
+m1 = floor((S + m0) / 100)
+m2 = floor((S + m0 + m1) / 100)
+p0 = m0 / T                           Q per X, at the start-equivalent bound
+phantom = curve.getReserves().quoteReserve - curve.realQuoteReserve()
+R = ((phantom + graduationThreshold) / phantom)^2
+band 0: p0 → p0 × R
+band 1: p0 → p0 × 2R
+band 2: p0 → p0 × 10R
+```
+
+The Pons factory launch record supplies `graduationThreshold`; the keeper
+checks it against the curve getter and checks that the curve reports the
+factory, token, and native ETH pair from the same record. Pons's official
+[curve documentation](https://docs.ponsfamily.com/v2#curve-reserves) and
+[contract source](https://github.com/ponsdotdev/pons-labs/blob/main/contractsV2/src/v2/PonsV2BondingCurve.sol)
+show that `getReserves().quoteReserve` includes the phantom amount while
+`realQuoteReserve()` excludes it. The multiplier is the constant-product
+curve's graduation/start marginal-price ratio. It is a *dimensionless shape*
+for X/Q; `p0` supplies a deliberately self-defined Q scale. `p0` does not
+convert Pons's starting ETH/X price into Q, measure fair market value, or
+establish expected profit. The calculator works in Pons phase 0 and phase 2;
+phase 1 waits until the graduated pool is created.
+
+For each band, `maxQuoteIn[i] = mi`, and integer v4 liquidity math chooses
+positive liquidity consuming at most 95% of that tranche. The unused newly
+minted Q is burned by the executor. The keeper derives ticks with exact
+integer ratio comparisons and rounds each range outward to the configured
+spacing. If Q is currency0, X/Q is the reciprocal of Q/X and the pool starts
+one tick-spacing **below** the widest band's lower tick. If Q is currency1,
+the pool starts one spacing **above** its upper tick. All three positions are
+therefore Q-only at creation. A zero supply, zero phantom reserve, invalid
+factory/curve binding, non-distinct rounded bands, out-of-range tick, or
+tranche too small for positive liquidity produces no configuration.
+
+Q computes `mi` again when it opens the pool. Supply can change between the
+keeper's pinned read and execution. If a saved `maxQuoteIn[i]` exceeds the
+actual new mint, or the deadline expires, the executor rejects the opening
+and Q rolls that mint attempt back. The keeper can then issue a fresh plan.
 
 ## Runtime
 
@@ -43,105 +64,82 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r forensics/requirements-cranker.txt
 ```
 
-The pinned manifest includes `eth_abi==6.0.0`, `eth-account`, `eth-utils`,
-`rlp`, and `websockets`. Supply these process environment variables:
-
-| Variable | Purpose |
+| Environment variable | Purpose |
 | --- | --- |
-| `PONS_HTTP_RPC_URL` | Robinhood HTTP RPC with archive logs, `eth_call`, and transaction support |
-| `PONS_CHAIN_ID` | Expected chain ID; mismatch stops startup |
-| `PONS_Q_ADDRESS` | Deployed hookless Q address |
-| `PONS_PRICE_GUARD_ADDRESS` | Guard bound to Q's executor |
-| `PONS_PRICE_CONFIGURATOR_PRIVATE_KEY` | Separate `Q.priceConfigurator` signing key; read only with `--live` from the process environment |
+| `PONS_HTTP_RPC_URL` | Robinhood RPC with logs and archive `eth_call` |
+| `PONS_CHAIN_ID` | Must be `4663` |
+| `PONS_Q_ADDRESS` | Deployed hookless Q |
+| `PONS_PRICE_CONFIGURATOR_PRIVATE_KEY` | Separate Q price-configurator signer; read only with `--live` |
 
-The first invocation needs inclusive `--start-block BLOCK` at or before the
-launches to cover. A read-only one-cycle preview is:
+A first read-only discovery and plan pass uses an inclusive starting block:
 
 ```sh
 .venv/bin/python forensics/launch_cursor/pons_price_keeper.py --start-block BLOCK --once
 ```
 
-It may update only its local discovery queue. It does not read the signer key
-or send a transaction. After the owner has deliberately configured the
-runtime, continuous automated configuration and the permissionless Q step
-are enabled with:
+Later runs use the saved `.local/pons-price-keeper.json` cursor and omit
+`--start-block`. The command prints the three planned ticks, liquidity amounts,
+mint caps, supply, phantom reserve, threshold, and initial sqrt price. It can
+update its local cursor, but does not read a signer key or send a transaction.
+The journal is now bound to Q with a zero guard address; an older journal from
+the guard-priced strategy will fail its binding check and needs a separate
+state path or an operator-reviewed cursor migration.
+After reviewing the deployed contracts, signer isolation, and a read-only plan,
+a single signed cycle is:
 
 ```sh
 .venv/bin/python forensics/launch_cursor/pons_price_keeper.py --live --once
 ```
 
-On later starts omit `--start-block`. Use `--no-process-next` to have this
-keeper configure positions while another keeper triggers Q's scheduler.
-Live mode requires `--once`; use `pons_keeper_supervisor.py` for continuous
-serial price and exit cycles with the independent owner watcher. Gas and fee caps, confirmation
-depth, poll interval, Q budget fraction, haircut, quote sample multiplier,
-tick spacing, band width, gap, snapshot age, and deadline are CLI options; inspect `--help`
-before live use. The Robinhood v4 Quoter defaults to
-`0x8dc178efb8111bb0973dd9d722ebeff267c98f94` and its code is checked
-at startup. The Q/executor/guard/factory, `priceConfigurator`, and bound
-executable depth guard bindings are checked before any live transaction. The
-depth guard's source, spot guard, settlement router, Q, Pons factory, v4
-Quoter, and haircut must match the planner. The executor requotes full-band
-exposure in the open transaction.
+Use `--no-process-next` if another process drives Q's scheduler. For repeated
+serial cycles use `pons_keeper_supervisor.py`. `--utilization-bps`,
+`--tick-spacing`, `--ttl-seconds`, snapshot age, work budgets, confirmation
+depth, and gas/fee caps are available in `--help`. The default config deadline
+is 120 seconds and the executor allows at most 15 minutes. The default
+`processNext` gas cap is 10 million because one open now creates three LP
+positions; the keeper still estimates gas and refuses an estimate over the
+configured cap.
 
-Each cycle checks at most **12 pending tokens**, builds at most **two full
-price plans**, and commits at most **two
-confirmed log ranges** by default. Dense log ranges are split before more
-than 128 launch logs receive individual canonical-block checks; each range
-has a 16-request split limit. The
-`--max-token-checks`, `--max-plans-per-cycle`, and
-`--max-discovery-ranges` flags adjust the cycle work
-limits. A single block with more than 128 matching launches stops for
-operator review rather than advancing an incomplete cursor. The response
-reports `checked`, `planned`, `deferred`, and total `pending` counts; waiting reasons
-cover only tokens checked in that cycle.
+Startup requires the Robinhood chain ID, the Q→executor→settlement-router
+bindings, the canonical v4 PoolManager/PositionManager/StateView, Q's 1% mint
+rule, and a Q-controlled static fee policy with the expected 5%–50% range.
+The executor creates its X/Q PoolKey with `hooks = address(0)` and the fee
+selected by that policy. The opening planner does not require the old
+`OpenPriceGuard`, `OpenExecutableDepthGuard`, a funded Q/ETH pool, or a Q
+balance already sitting in the executor. The separate exit and harvest keepers
+still use their guard/Quoter settings to bound cash settlement.
 
-New launches and queued candidates enter a priority lane capped at 64 tokens
-for up to nine keeper cycles. A fresh launch stays there while its owner-signed
-`enqueue` is still unconfirmed; known phase-1 or unfunded conditions are
-demoted to the background lane. Priority membership expires
-even if a token is not checked, while a separate persistent round-robin
-cursor checks the entire pending queue. Every third cycle starts with that
-background lane, so an immediately actionable priority token cannot prevent
-older tokens from being revisited. Both cursors, the priority window, and
-the cycle phase are stored in the existing mode-`0600` state journal and
-survive restarts. Older journals without these scheduler fields load with an
-empty priority lane.
+## Journal and scheduling
 
-The state file and lock are inside ignored `.local`, never `/tmp`. The file
-is mode `0600` and atomically replaced with fsync. It contains the
-confirmed-block cursor, discovered token queue, and any pending signed raw
-transaction. The only transactions the keeper can sign are
-`Q.configureOpen(token, config)` and permissionless `Q.processNext()`.
-On restart, it validates the saved signature, chain, nonce, target, selector,
-payload, gas and fee caps before rebroadcasting an unknown transaction. A
-stale unknown configuration or an ambiguous consumed nonce stops for
-operator review. A confirmed reverted configuration leaves the token pending
-for a fresh plan. A committed-block reorg stops the keeper for reconciliation.
-The price and exit keepers use distinct configurator signers, nonce streams,
-state files, and `.local` locks. The supervisor services their `--once --live`
-cycles in independent subprocess slots, prioritizing exit checks. Each lock
-prevents two processes for the same signer from taking its nonce and records
-that signer's pending transaction across restarts. The owner watcher uses a
-third account.
+Confirmed factory logs enter a durable pending-token queue. Each cycle checks
+at most 12 tokens and makes at most two full plans by default. Fresh launches
+get a bounded priority lane, while a rotating background lane prevents older
+ones from starving. A block-reorg or overfull single log block halts cursor
+advancement. All planning reads are pinned to one block, its hash is checked
+again afterward, and a snapshot older than 20 seconds is rejected.
 
-## Limits
+The ignored `.local` state file is mode `0600`, atomically replaced with fsync,
+and guarded by a local lock. It records the log cursor, scheduling state, and
+any outstanding signed raw transaction. The signer may submit only
+`Q.configureOpen(address,bytes)` or `Q.processNext()`. It checks calldata,
+chain, nonce, target, value, gas, and fees before sending or recovering a raw
+transaction. A pending configuration is decoded as the exact seven-field
+three-array plan and compared with a fresh pinned calculation before an
+unknown transaction is rebroadcast. A consumed nonce without a matching
+receipt stops for review.
 
-This is an automated **planner** with a same-transaction executable depth
-guard. The quoted depth is current state, not a guarantee about future exits.
-The v4 Quoter and Pons reserve quote represent current state and size; both
-can change before the separate `configureOpen` and `processNext` transactions.
-The executor repeats the spot bound and full-band X→ETH→Q quote at mint. The
-default haircut and Q-only gap remain risk controls, not a proof of profit or
-fair value after later market movement.
-Quoter failure, phase 1, absent Q/ETH liquidity, an impossible band, or
-insufficient idle Q produce no configuration.
+Solidity's autogenerated `openConfigs(address)` getter omits the three fixed
+array fields. Therefore, when Q still has an armed queued launch, the live
+keeper refreshes its short-lived full configuration before processing rather
+than claiming to verify the saved bands from that getter.
 
-The separate exit keeper inspects active LPs and configures bounded exits;
-this component does not. The repository's hookless strategy remains a
-prototype; no live transaction was sent while building or testing this keeper.
+## Scope and verification
 
-Offline tests:
+The deterministic X/Q curve is a launch policy, not a fair-market-value or
+exit-liquidity guarantee. There is no entry gate tied to the X/ETH or Q/ETH
+market. A later X exit or Q cashout can have poor executable depth; those
+risks are handled, to the extent possible, by the separate exit and harvest
+routes. No live transaction was sent while building or testing this keeper.
 
 ```sh
 .venv/bin/python -m unittest -v forensics/launch_cursor/test_pons_price_keeper.py

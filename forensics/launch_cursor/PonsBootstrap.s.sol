@@ -6,7 +6,6 @@ import {PositionInspector} from "./PositionInspector.sol";
 import {LaunchCursorToken} from "./LaunchCursorToken.sol";
 import {OpenPriceGuard} from "./OpenPriceGuard.sol";
 import {ExitSettlementRouter} from "./ExitSettlementRouter.sol";
-import {OpenExecutableDepthGuard} from "./OpenExecutableDepthGuard.sol";
 import {HooklessQuoteBuyAdapter} from "./HooklessQuoteBuyAdapter.sol";
 
 // This script deliberately has no key-loading method. Forge supplies the
@@ -118,6 +117,9 @@ contract PonsBootstrap {
     address private constant WIZARD_FANOUT = 0x1b88A6c6516FD2918905186F21Bb9F5CaA1a15c8;
     bytes32 private constant WIZARD_FANOUT_CODEHASH =
         0x384c9220050083b0efd1cac6ac47ea6901e68a0a10a9ff1ad3a06ddade6d21ae;
+    string private constant Q_LABEL = unicode"🧙‍♂️";
+    string private constant Q_IMAGE_URI =
+        "https://raw.githubusercontent.com/staccDOTsol/the-book/450d558b169408de1483c0540faa1aae72889a57/assets/wizard-token.png";
 
     error PreflightFailed(string reason);
 
@@ -127,13 +129,14 @@ contract PonsBootstrap {
         _requireNonzero(operator, "operator");
         _verifyExternal(strategy);
 
-        string memory name = vm.envString("PONS_Q_NAME");
-        string memory symbol = vm.envString("PONS_Q_SYMBOL");
-        if (bytes(name).length == 0 || bytes(symbol).length == 0) revert PreflightFailed("Q name/symbol missing");
+        string memory name = _pinnedMetadata("PONS_Q_NAME", Q_LABEL);
+        string memory symbol = _pinnedMetadata("PONS_Q_SYMBOL", Q_LABEL);
+        string memory description = _pinnedMetadata("PONS_Q_DESCRIPTION", Q_LABEL);
+        string memory imageURI = _pinnedMetadata("PONS_Q_IMAGE_URI", Q_IMAGE_URI);
         uint256 retry = vm.envUint("PONS_RETRY_DELAY_SECONDS");
         uint256 gasLimit = vm.envUint("PONS_TRANSFER_STEP_GAS_LIMIT");
         uint256 gasPrice = vm.envUint("PONS_HARVEST_GAS_PRICE_CEILING_WEI");
-        if (retry == 0 || retry > type(uint64).max || gasLimit < 100_000 || gasLimit > 3_000_000 || gasPrice == 0) {
+        if (retry == 0 || retry > type(uint64).max || gasLimit < 100_000 || gasLimit > 10_000_000 || gasPrice == 0) {
             revert PreflightFailed("cursor policy out of range");
         }
 
@@ -153,7 +156,8 @@ contract PonsBootstrap {
         HooklessLPExecutor ex = new HooklessLPExecutor(POOL_MANAGER, POSITION_MANAGER, STATE_VIEW, PERMIT2);
         PositionInspector ins = new PositionInspector(address(ex));
         LaunchCursorToken q = new LaunchCursorToken(
-            name, symbol, SUPPLY, PONS_FACTORY, address(ex), address(ins),
+            LaunchCursorToken.Metadata(name, symbol, description, imageURI),
+            SUPPLY, PONS_FACTORY, address(ex), address(ins),
             uint64(retry), uint32(gasLimit), gasPrice, endpoints
         );
         ex.bindController(address(q));
@@ -276,7 +280,7 @@ contract PonsBootstrap {
     }
 
     function deployAfterLaunch()
-        external returns (address priceGuard, address settlementRouter, address depthGuard)
+        external returns (address priceGuard, address settlementRouter)
     {
         address operator = vm.envAddress("PONS_DEPLOYER");
         address strategy = vm.envAddress("PONS_INSTANT_STRATEGY");
@@ -284,7 +288,6 @@ contract PonsBootstrap {
         address configurator = vm.envAddress("PONS_PRICE_CONFIGURATOR");
         address exitConfigurator = vm.envAddress("PONS_EXIT_CONFIGURATOR");
         uint256 maxDeviation = vm.envUint("PONS_SPOT_MAX_DEVIATION_BPS");
-        uint256 safety = vm.envUint("PONS_DEPTH_SAFETY_BPS");
         (HooklessLPExecutor ex, PositionInspector ins, LaunchCursorToken q) = _coreFromEnv();
         _verifyExternal(strategy);
         _verifyCore(operator, ex, ins, q);
@@ -296,11 +299,11 @@ contract PonsBootstrap {
             exitConfigurator == operator || exitConfigurator == configurator) {
             revert PreflightFailed("developer or configurator invalid");
         }
-        if (maxDeviation == 0 || maxDeviation > 1_000 || safety < 1_500 || safety >= 10_000) {
+        if (maxDeviation == 0 || maxDeviation > 1_000) {
             revert PreflightFailed("guard policy out of range");
         }
-        if (ex.priceGuard() != address(0) || ex.settlementRouter() != address(0) || ex.depthGuard() != address(0)) {
-            revert PreflightFailed("guards/router already partially bound; reconcile receipts");
+        if (ex.settlementRouter() != address(0)) {
+            revert PreflightFailed("router already bound; reconcile receipts");
         }
         if (q.priceConfigurator() != operator || q.exitConfigurator() != operator || q.automaticEnabled()) {
             revert PreflightFailed("Q policy changed before post-launch binding");
@@ -310,15 +313,10 @@ contract PonsBootstrap {
         OpenPriceGuard spot = new OpenPriceGuard(
             PONS_FACTORY, STATE_VIEW, address(q), Q_ETH_FEE, Q_ETH_SPACING, uint16(maxDeviation)
         );
-        ex.bindPriceGuard(address(spot));
         ExitSettlementRouter router = new ExitSettlementRouter(
             address(ex), address(q), WETH, WIZARD_FANOUT, payable(developer), Q_ETH_FEE, Q_ETH_SPACING
         );
         ex.bindSettlementRouter(address(router));
-        OpenExecutableDepthGuard depth = new OpenExecutableDepthGuard(
-            address(ex), address(spot), address(router), QUOTER, uint16(safety)
-        );
-        ex.bindDepthGuard(address(depth));
         q.setInternalEndpoint(address(router), true);
         q.setInternalEndpoint(address(router.activeSale()), true);
         q.setInternalEndpoint(address(router.graduatedSale()), true);
@@ -327,24 +325,22 @@ contract PonsBootstrap {
         q.setExitConfigurator(exitConfigurator);
         vm.stopBroadcast();
 
-        if (ex.priceGuard() != address(spot) || ex.settlementRouter() != address(router) ||
-            ex.depthGuard() != address(depth) || q.priceConfigurator() != configurator ||
+        if (ex.settlementRouter() != address(router) || q.priceConfigurator() != configurator ||
             q.exitConfigurator() != exitConfigurator || q.automaticEnabled()) {
             revert PreflightFailed("post-launch binding mismatch");
         }
-        return (address(spot), address(router), address(depth));
+        return (address(spot), address(router));
     }
 
-    /// @notice An explicit final gate after the vault has independently
-    /// acquired Q and the watcher/keepers and all recipient identities have
-    /// been checked. It only enables transfer-triggered scheduling.
+    /// @notice An explicit final gate after the Q/ETH launch has active
+    /// liquidity and the watcher/keepers and recipients have been checked.
+    /// It only enables transfer-triggered scheduling.
     function activate() external {
         address operator = vm.envAddress("PONS_DEPLOYER");
         address strategy = vm.envAddress("PONS_INSTANT_STRATEGY");
         address developer = vm.envAddress("PONS_DEVELOPER");
         address configurator = vm.envAddress("PONS_PRICE_CONFIGURATOR");
         address exitConfigurator = vm.envAddress("PONS_EXIT_CONFIGURATOR");
-        uint256 minIdleQ = vm.envUint("PONS_MIN_IDLE_Q_WEI");
         (HooklessLPExecutor ex, PositionInspector ins, LaunchCursorToken q) = _coreFromEnv();
         _verifyExternal(strategy);
         _verifyCore(operator, ex, ins, q);
@@ -356,22 +352,15 @@ contract PonsBootstrap {
             exitConfigurator == operator || exitConfigurator == configurator) {
             revert PreflightFailed("cursor activation state invalid");
         }
-        address spot = ex.priceGuard();
         address router = ex.settlementRouter();
-        address depth = ex.depthGuard();
-        if (spot.code.length == 0 || router.code.length == 0 || depth.code.length == 0 ||
-            !OpenExecutableDepthGuard(depth).matches(address(ex), spot, router) ||
+        if (router.code.length == 0 ||
             ExitSettlementRouter(payable(router)).developer() != developer ||
             ExitSettlementRouter(payable(router)).wizardFanout() != WIZARD_FANOUT ||
             address(ExitSettlementRouter(payable(router)).weth()) != WETH ||
             !q.internalEndpoint(router) || !q.internalEndpoint(address(ExitSettlementRouter(payable(router)).activeSale())) ||
             !q.internalEndpoint(address(ExitSettlementRouter(payable(router)).graduatedSale())) ||
             !q.internalEndpoint(address(ExitSettlementRouter(payable(router)).quoteBuy()))) {
-            revert PreflightFailed("guards, recipients, or endpoints changed");
-        }
-        if (minIdleQ == 0 || minIdleQ > SUPPLY ||
-            q.balanceOf(address(ex)) < ex.reservedHarvestedQuote() + minIdleQ) {
-            revert PreflightFailed("executor lacks unreserved acquired Q");
+            revert PreflightFailed("router, recipients, or endpoints changed");
         }
         vm.startBroadcast(operator);
         q.setAutomatic(true);
@@ -444,7 +433,7 @@ contract PonsBootstrap {
         _requireNonzero(operator, "operator");
         if (address(ex).code.length == 0 || address(ins).code.length == 0 || address(q).code.length == 0 ||
             ex.owner() != operator || q.owner() != operator ||
-            q.decimals() != 18 || q.INITIAL_SUPPLY() != SUPPLY ||
+            q.decimals() != 18 || q.INITIAL_SUPPLY() != SUPPLY || q.OPEN_MINT_BPS() != 100 ||
             ex.controller() != address(q) || ex.quoteToken() != address(q) ||
             address(ex.positionManager()) != POSITION_MANAGER || address(ex.stateView()) != STATE_VIEW ||
             address(ex.permit2()) != PERMIT2 || ex.poolManager() != POOL_MANAGER ||
@@ -480,5 +469,16 @@ contract PonsBootstrap {
 
     function _requireNonzero(address value, string memory label) private pure {
         if (value == address(0)) revert PreflightFailed(label);
+    }
+
+    function _pinnedMetadata(string memory key, string memory expected) private returns (string memory) {
+        try vm.envString(key) returns (string memory supplied) {
+            if (keccak256(bytes(supplied)) != keccak256(bytes(expected))) {
+                revert PreflightFailed("Q metadata differs from pinned wizard launch");
+            }
+            return supplied;
+        } catch {
+            return expected;
+        }
     }
 }

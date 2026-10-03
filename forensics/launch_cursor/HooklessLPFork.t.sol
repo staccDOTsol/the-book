@@ -170,11 +170,15 @@ contract HooklessLPForkTest {
         HooklessLPExecutor executor, ForkMockToken x, LaunchCursorToken q,
         uint160 startingPrice, uint256 quoteBefore
     ) private view {
-        (uint160 livePrice, bool inBand, bool quoteBoundary, bool tokenBoundary, bool entered) =
-            executor.inspect(address(x));
-        require(livePrice == startingPrice, "wrong initialized price");
-        require(!inBand && quoteBoundary && !tokenBoundary && !entered, "not quote-only");
-        require(q.balanceOf(address(executor)) < quoteBefore, "no quote was spent");
+        for (uint8 i; i < 3; ++i) {
+            (uint160 livePrice, bool inBand, bool quoteBoundary, bool tokenBoundary, bool entered) =
+                executor.inspectTranche(address(x), i);
+            require(livePrice == startingPrice, "wrong initialized price");
+            require(!inBand && quoteBoundary && !tokenBoundary && !entered, "not quote-only");
+        }
+        require(executor.activePositionCount(address(x)) == 3, "wrong LP count");
+        require(q.balanceOf(address(executor)) == quoteBefore, "idle Q changed");
+        require(q.totalSupply() > 1_000_000_000 ether, "newly minted LP Q was not spent");
     }
 
     function _openAndAssert(
@@ -189,14 +193,14 @@ contract HooklessLPForkTest {
             : HooklessTickMath.getSqrtPriceAtTick(tickUpper);
         ILaunchCursorConfigurator.OpenConfig memory config = ILaunchCursorConfigurator.OpenConfig({
             startingSqrtPriceX96: startingPrice,
-            liquidity: 1 ether,
-            maxQuoteIn: 10 ether,
+            liquidity: [uint128(1 ether), uint128(1 ether), uint128(1 ether)],
+            maxQuoteIn: [uint128(10 ether), uint128(10 ether), uint128(10 ether)],
             tickSpacing: 10,
-            tickLower: tickLower,
-            tickUpper: tickUpper,
-            deadline: uint64(block.timestamp + 1_000)
+            tickLower: [tickLower, tickLower + 10, tickLower + 20],
+            tickUpper: [tickUpper, tickUpper, tickUpper],
+            deadline: uint64(block.timestamp + 600)
         });
-        q.configureOpen(address(x), config);
+        q.configureOpen(address(x), abi.encode(config));
         (bool attempted, bool succeeded) = q.processNext();
         require(attempted && succeeded, "real v4 pool/position mint failed");
         _assertMintedQuoteOnly(executor, x, q, startingPrice, quoteBefore);
@@ -206,9 +210,7 @@ contract HooklessLPForkTest {
         uint256 ownerQuoteBefore = q.balanceOf(address(this));
         q.emergencyAbort(address(x), 0, 1, uint64(block.timestamp + 1_000));
         require(q.balanceOf(address(this)) > ownerQuoteBefore, "Q was not recovered");
-        try executor.inspect(address(x)) returns (uint160, bool, bool, bool, bool) {
-            revert("NFT still active after abort");
-        } catch {}
+        require(executor.activePositionCount(address(x)) == 0, "NFT still active after abort");
     }
 
     function testInitializeAndMintOnRobinhoodFork() external {
@@ -222,22 +224,18 @@ contract HooklessLPForkTest {
         PositionInspector inspector = new PositionInspector(address(executor));
         address[] memory endpoints = new address[](0);
         LaunchCursorToken q = new LaunchCursorToken(
-            "Fork Test Q", "Q", 1_000_000_000 ether,
+            LaunchCursorToken.Metadata("Fork Test Q", "Q", "Fork test quote", "ipfs://fork-test-q"),
+            1_000_000_000 ether,
             address(factory), address(executor), address(inspector),
-            30, 2_000_000, 1 gwei, endpoints
+            30, 9_000_000, 1 gwei, endpoints
         );
         executor.bindController(address(q));
         inspector.bindCursor(address(q));
         ForkMockPriceGuard guard = new ForkMockPriceGuard(address(factory), STATE_VIEW, address(q));
-        executor.bindPriceGuard(address(guard));
         ForkMockSettlementRouter router = new ForkMockSettlementRouter(
             address(executor), address(q), address(factory), POOL_MANAGER, guard.quoteEthPoolId()
         );
         executor.bindSettlementRouter(address(router));
-        ForkMockDepthGuard depth = new ForkMockDepthGuard(
-            address(executor), address(guard), address(router), address(q), address(factory)
-        );
-        executor.bindDepthGuard(address(depth));
         require(q.transfer(address(executor), 100 ether));
         _openAndAssert(x, executor, q);
 
