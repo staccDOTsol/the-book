@@ -29,7 +29,8 @@ These are the observable signatures. Each is a detection rule, not a recipe.
 3. **Initialize-without-tokens price ladder.** `Initialize` writes a `sqrtPriceX96` — a quoted price — with **zero tokens deposited**. Successive Initializes at rising prices move the *quoted* price with no trade ever hitting liquidity. On a sibling USDG pool the quoted price walked ~17x (05:26→06:45) this way. This is the "move price without buys or sells" mechanism.
 4. **JIT +dL/−dL pairing.** ModifyLiquidity add and remove by the same wallet inside one block or a few blocks — liquidity that exists only to be quoted, then withdrawn.
 5. **Fixed side-payment per fill.** The resident bots emit a constant **19.92 USDG** per fill — a machine constant, not a market outcome.
-6. **Deterministic cross-chain helper.** The bots call a helper contract living at the **same address on 8 chains** (CREATE2 via the canonical deployer `0x4e59b448…`). Same-address-everywhere = industrial operator, not a local actor.
+
+**Correction:** An earlier sixth item treated `0x6e2a35a7…` as a private cross-chain helper and inferred common control from its use. [OKX lists the full address as its public Robinhood DEX Router](https://web3.okx.pro/es-es/onchainos/dev-docs/trade/dex-smart-contract). Shared use of that router is a venue observation, not a detection rule for common ownership. See [the cluster correction](50-cluster.md#public-router-correction-2026-10-03).
 
 ## Net effect
 

@@ -27,13 +27,13 @@ Plus `0x05783022…` (0578) and `0x7af2fda1…` (7af2) as JIT counterparties on 
 ```
 
 - **`0x53091256…` (the "refiller") is a venue hot wallet, NOT a shared operator.** 9,410 ETH, 146,116 txs; in its last 5,000 transfers it paid **2,578 distinct recipients**, median 0.017 ETH. Both bots drawing gas from it is a *weak* link — like two people using the same bank. Corrected from the earlier read.
-- **The strong links are:** (a) the funding hub `0xcc4bc788` bridging in via Relay, and (b) the **shared helper contract** the bots both call.
+- **`0xcc4bc788` has a recorded Relay funding path.** That path needs its own transaction-level comparison before it can link distinct pool creators. Use a direct, time-ordered transfer between specific addresses for a funding claim; shared use of a public contract is insufficient.
 
-## The shared helper contract (the real signature)
+## Public router correction (2026-10-03)
 
-- **`0x6e2a35a7…`** — exists at the **same address** on eth, base, arb, op, bsc, unichain, ink, soneium. Deployed via canonical CREATE2 deployer `0x4e59b448…`. Deployer EOA `0xeb33b04b…` (13 contract creations).
-- **`0xccc88a9d…`** (hub's callee) — same address on 12 chains. Deployer `0x818aa60a…`, itself funded 0.05 ETH from `0xf718d37d…` and dust from the Relay solver.
-- Same-address-across-chains is the fingerprint of a professional multi-chain shop. This is what ties the actors together, far more than the shared gas venue.
+- **`0x6e2a35a7ad683cf634d91492d73bb7ff774c6919` is OKX's public Robinhood DEX Router**, listed in [OKX's contract directory](https://web3.okx.pro/es-es/onchainos/dev-docs/trade/dex-smart-contract) and identified as `DexRouter` by [Robinhood Blockscout](https://robinhoodchain.blockscout.com/address/0x6e2a35a7ad683cf634d91492d73bb7ff774c6919). Its use by multiple wallets indicates that they traded through the same venue. Internal transfers from this router can be swap outputs or refunds; they are not, by themselves, direct funding from a common controller.
+- The earlier inference that this same-address, cross-chain deployment tied the wallets to one private operator was **wrong**. Public infrastructure can be deployed deterministically on many chains. Neither use of this router nor its deployer identifies the users of the router.
+- **`0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE` is a Relay approval proxy**, with [verified `RelayApprovalProxyV3` source on Polygon](https://polygonscan.com/address/0xccc88a9d1b4ed6b0eaba998850414b24f1c315be) and the [same public contract labeled on other chains](https://sonicscan.org/address/0xccc88a9d1b4ed6b0eaba998850414b24f1c315be). Its appearance in the hub's call path is use of shared infrastructure, not an ownership link to pool initiators.
 
 ## The second hook
 
@@ -43,7 +43,7 @@ Plus `0x05783022…` (0578) and `0x7af2fda1…` (7af2) as JIT counterparties on 
 
 1. **Robinhood chain / the gas venue behind `0x53091256…`** — if that's Robinhood's own hot wallet, the operators have KYC'd accounts behind it.
 2. **The Relay bridge** (`0xf70da978…` solver) — off-ramp/on-ramp identity for the funding hub.
-3. **Deployer EOAs** `0xeb33b04b…`, `0x818aa60a…` — the humans behind the multi-chain contracts.
+3. **Specific pool initiator and funder EOAs** — trace their direct transfers and timing independently. The OKX router deployer `0xeb33b04b…` should not be treated as the pool initiators' owner on this evidence.
 
 ## Data files (scratchpad)
 

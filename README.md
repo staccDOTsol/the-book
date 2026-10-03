@@ -13,14 +13,14 @@ An evidentiary record of how newly launched tokens are worked by an industrializ
 - A price ladder: successive `Initialize` calls with no tokens deposited walked the quoted price of a sibling pool about 17x with no trade touching liquidity.
 - Liquidity added and removed by the same wallet within one or a few blocks (JIT +dL/−dL).
 - A constant 19.92 USDG side payment on every fill.
-- The bots call one helper contract deployed at the same address on 8 chains.
+- Some wallets call the same public OKX DEX Router. That shared route does not establish common control; see the [router correction](forensics/record/50-cluster.md#public-router-correction-2026-10-03).
 
 **The cluster** — [`50-cluster.md`](forensics/record/50-cluster.md)
 
 - Three resident wallets: one created pools on 532 distinct tokens in under a month. Net USDG per token is near zero: they are a presence layer on every launch, not a per-token heist.
-- Funding topology, the shared helper, and what each link does and does not prove.
+- Funding topology, the public-router correction, and what each link does and does not prove.
 
-**Detection, not instruction.** The six fingerprints in the record are written as detection rules. Pool-count and fee-tier scores for 201 pump.fun tokens are in [`forensics/pumpfun_shape_scores.json`](forensics/pumpfun_shape_scores.json).
+**Detection, not instruction.** The five market-structure indicators in the record are written as detection rules. Pool-count and fee-tier scores for 201 pump.fun tokens are in [`forensics/pumpfun_shape_scores.json`](forensics/pumpfun_shape_scores.json).
 
 ## The record
 
@@ -28,7 +28,7 @@ An evidentiary record of how newly launched tokens are worked by an industrializ
 |---|---|
 | [`00-index.md`](forensics/record/00-index.md) | Overview |
 | [`20-litigation.md`](forensics/record/20-litigation.md) | Aguilar v. Baton Corporation Ltd (S.D.N.Y. 1:25-cv-00880): public docket |
-| [`40-onchain-xgasdev.md`](forensics/record/40-onchain-xgasdev.md) | Launch forensics and the six fingerprints |
+| [`40-onchain-xgasdev.md`](forensics/record/40-onchain-xgasdev.md) | Launch forensics and five market-structure indicators |
 | [`50-cluster.md`](forensics/record/50-cluster.md) | Wallet map and funding |
 
 Raw data: [`forensics/*.json`](forensics/). Chart: [`exhibits/xgasdev_price_bots.png`](exhibits/xgasdev_price_bots.png).

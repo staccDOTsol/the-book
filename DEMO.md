@@ -38,14 +38,15 @@ An e2e demonstration of the "Lord of War" market structure, written as on-chain 
 | Movements | atomic Jito bundles (V1 wire 4096B, b58, tips) + Helius simulate-first | `jito.mjs`, `v1-wire.mjs` |
 | Extraction | creator fees + AMM pulls | `act6-claim.mjs`, `act7-pull.mjs` |
 
-## The six fingerprints (from the XGAS.DEV forensics, reproduced here on Solana)
+## Five market-structure indicators (from the XGAS.DEV forensics, reproduced here on Solana)
 
 1. **AMM-count anomaly** — 9 pools on one mint at t≈0
 2. **Honeypot fee tiers** — protocol fee 0 on all pools (our config, our authority)
 3. **Init-without-tokens price ladder** — 8 zero-liq pools quoting 5x-5000x
 4. **JIT +dL/−dL pairing** — atomic swap+pull in one tx
 5. **Fixed side-payment per fill** — creator toll sweeping every cycle
-6. **Deterministic cross-chain helper** — the rig's wallets share one operator (PDA-equivalent)
+
+The author's control of the demonstration wallets is disclosed above. The XGAS.DEV wallets' use of [OKX's public DEX Router](https://web3.okx.pro/es-es/onchainos/dev-docs/trade/dex-smart-contract) does not prove common ownership of those wallets.
 
 ## Exhibits
 
@@ -65,7 +66,7 @@ exhibits/           — add your images here
 
 ## The findings (Robinhood chain, XGAS.DEV launch 2026-09-26)
 
-The launch was farmed within 32 minutes by an industrialized multi-chain bot operation. 59-65 permissionless v4 pools on a token minutes old, honeypot fee tiers 70-98%, an init-price ladder walking the quoted price 17x with zero trades, JIT +dL/−dL pairing on the fills, a fixed 19.92 USDG toll per fill, and a deterministic helper contract at the same address on 8 chains. Net per-token USDG: zero. The bots weren't there to profit — they were there to be the structure.
+The XGAS.DEV launch saw 59-65 permissionless v4 pools on a token minutes old, fee tiers 70-98%, an init-price ladder walking the quoted price 17x with zero trades, JIT +dL/−dL pairing on fills, and a recurring 19.92 USDG payment per fill. Some wallets routed through the same public OKX DEX Router; that does not establish a single operator. Net per-token USDG in the recorded wallet sample was near zero.
 
 Full record in `forensics/record/`.
 
