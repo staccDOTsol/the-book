@@ -1,0 +1,790 @@
+{
+  "schemaVersion": 1,
+  "rule": "3/300",
+  "remainingThreshold": "0.75",
+  "fromTime": "2026-10-02T04:17:55Z",
+  "toTime": "2026-10-03T04:17:55Z",
+  "events": [
+    {
+      "signalId": "3/300:0x2c612e2f811f106f1baa1dbc5fbae88f1ac561c7:78003986",
+      "token": "0x2c612e2f811f106f1baa1dbc5fbae88f1ac561c7",
+      "entryBlock": 78003986,
+      "entryTimestamp": 1790921121,
+      "entryTime": "2026-10-02T06:05:21Z",
+      "exitTimestamp": 1790922921,
+      "exitTime": "2026-10-02T06:35:21Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 990791,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x2fa9ce12d1f3e31a26a0d9ab05416c534dd574fd700c1e3086c76c006be27d57": 0,
+        "0x7bdc77a45013c0a883c092bd6fae6e40b2159789c89a900650c9deff101973eb": 990791
+      }
+    },
+    {
+      "signalId": "3/300:0xbcd18d1de7041d0a5b3a9413ceaf0876757c9193:78004098",
+      "token": "0xbcd18d1de7041d0a5b3a9413ceaf0876757c9193",
+      "entryBlock": 78004098,
+      "entryTimestamp": 1790921133,
+      "entryTime": "2026-10-02T06:05:33Z",
+      "exitTimestamp": 1790922933,
+      "exitTime": "2026-10-02T06:35:33Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 987462,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x50d656c7aec987da20c16bad9d4639c861fdd935b783a06f6b8ce0c64ce3ce27": 987462,
+        "0xf01acd96aa906775b9456bdbca76d8ca5792cdc04785db8c5a5fb25e444028c1": 0
+      }
+    },
+    {
+      "signalId": "3/300:0xafdc93ae51e4d9640534f4e44789561c182cdab9:78021150",
+      "token": "0xafdc93ae51e4d9640534f4e44789561c182cdab9",
+      "entryBlock": 78021150,
+      "entryTimestamp": 1790922862,
+      "entryTime": "2026-10-02T06:34:22Z",
+      "exitTimestamp": 1790922970,
+      "exitTime": "2026-10-02T06:36:10Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 13619464,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xaac390a3de079d2d918090cd81e2bc92ed9430593b5b4658bbec187c94c0942c": 13619464
+      }
+    },
+    {
+      "signalId": "3/300:0xb3d190087e16b8d49c906a27ee398bfe0f94338c:78113470",
+      "token": "0xb3d190087e16b8d49c906a27ee398bfe0f94338c",
+      "entryBlock": 78113470,
+      "entryTimestamp": 1790932229,
+      "entryTime": "2026-10-02T09:10:29Z",
+      "exitTimestamp": 1790934029,
+      "exitTime": "2026-10-02T09:40:29Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 988873,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xd2256c8d98f6c8c3850ab944919afebdbc262e5354ac45452acb6839db016e3a": 0,
+        "0x7a6ec64dd2769a138759946b6da3c3bc397b471525b3c0ea7f081d5d56582197": 988873
+      }
+    },
+    {
+      "signalId": "3/300:0x9e795209be691654fb908ab86b3a651551939e16:78137842",
+      "token": "0x9e795209be691654fb908ab86b3a651551939e16",
+      "entryBlock": 78137842,
+      "entryTimestamp": 1790934688,
+      "entryTime": "2026-10-02T09:51:28Z",
+      "exitTimestamp": 1790936488,
+      "exitTime": "2026-10-02T10:21:28Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 994757,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x76d4010bb8b3ffa76c9f8a033496064f40b6238ec46766e7e04f36e62ce491a4": 0,
+        "0x16ce9ccbb2f6f306987459ded336cd3488f4e9d7d1fa5351f1a9333919afad58": 994757
+      }
+    },
+    {
+      "signalId": "3/300:0x5c53c1dcc86286d78dd68b5c6bd995eac646338c:78142970",
+      "token": "0x5c53c1dcc86286d78dd68b5c6bd995eac646338c",
+      "entryBlock": 78142970,
+      "entryTimestamp": 1790935204,
+      "entryTime": "2026-10-02T10:00:04Z",
+      "exitTimestamp": 1790937004,
+      "exitTime": "2026-10-02T10:30:04Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 940810,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xf54033bb6e9d44c880993d8d6c23b04cb685b33ded39da64ee949f0f07059c2c": 129525,
+        "0xee95f906824b8ff29954bc6f6a9d1ebde67429bb62571507e808e4bc01c2f847": 940810,
+        "0x61c5c3022beb68adb5cf84a124c4af9bceb22c2c761796c1e34ede370a0d9f42": 144747
+      }
+    },
+    {
+      "signalId": "3/300:0x1e8c635289d9e11c7c3f12f35a6ecb709cf3f88a:78155942",
+      "token": "0x1e8c635289d9e11c7c3f12f35a6ecb709cf3f88a",
+      "entryBlock": 78155942,
+      "entryTimestamp": 1790936515,
+      "entryTime": "2026-10-02T10:21:55Z",
+      "exitTimestamp": 1790938315,
+      "exitTime": "2026-10-02T10:51:55Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 997044,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x8491fcd7ab5faf3ee7fe35d99fbc955efa3f044637a621d05e5e87bbf73f09c6": 997044,
+        "0xf62c3aa72d3348e3af3d2b84230b8cffda8737c1e6f0324b832083a3395b3b32": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x93c9c43bb887958c4caa35c2ea9fc626332cc97c:78170328",
+      "token": "0x93c9c43bb887958c4caa35c2ea9fc626332cc97c",
+      "entryBlock": 78170328,
+      "entryTimestamp": 1790937969,
+      "entryTime": "2026-10-02T10:46:09Z",
+      "exitTimestamp": 1790939769,
+      "exitTime": "2026-10-02T11:16:09Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 992462,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x958081ee004d71af12ec4564dcc16a3deeac7ed2b496c79bd8aba29b55bea99e": 992462,
+        "0x0d9a612dd51cd3d7c53d58a3544cd82767e8086b6ede93fba994c0c95b235bea": 0
+      }
+    },
+    {
+      "signalId": "3/300:0xbe5d432a0b30443987d261b664cc6bb8bccb80d6:78184378",
+      "token": "0xbe5d432a0b30443987d261b664cc6bb8bccb80d6",
+      "entryBlock": 78184378,
+      "entryTimestamp": 1790939392,
+      "entryTime": "2026-10-02T11:09:52Z",
+      "exitTimestamp": 1790941192,
+      "exitTime": "2026-10-02T11:39:52Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 993819,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x0a22bb1c8f6f68977672406298e5326828f4f5f54c8024471e34c6a2b0001d07": 993819,
+        "0x45e7cf827c94dcde8d5317befae28dd2cba2d5a6e51874c5e128232eaf5e05a3": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x9c57e13c4105c4f64ab4cb19ace21ec3b91ce635:78204421",
+      "token": "0x9c57e13c4105c4f64ab4cb19ace21ec3b91ce635",
+      "entryBlock": 78204421,
+      "entryTimestamp": 1790941420,
+      "entryTime": "2026-10-02T11:43:40Z",
+      "exitTimestamp": 1790943220,
+      "exitTime": "2026-10-02T12:13:40Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 999445,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xcd16fb1ca5062aca5bf4ab6400f582dda51bab9ae1ed99303b5f483d73596d5a": 999445,
+        "0x2744d7c73c03af3d3cb62e7f5fad5a6a806c67fa5e0d2c7e1603cf8a7af6a73d": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x285a9ddf53bef60ebcc55f5752724a30ef7b2d17:78218030",
+      "token": "0x285a9ddf53bef60ebcc55f5752724a30ef7b2d17",
+      "entryBlock": 78218030,
+      "entryTimestamp": 1790942795,
+      "entryTime": "2026-10-02T12:06:35Z",
+      "exitTimestamp": 1790944595,
+      "exitTime": "2026-10-02T12:36:35Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 987932,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x341be9c674b7e7eaa3863cdd9a5a5b1a6f7896272fd555613131f7b73be67eed": 987932,
+        "0xb79349bc2e6695e14e4945d921f8fdacb8c4506aba3d68814645ad80da1415f4": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x0d0a2a82f0d3897600902cd08e6a5be1b65f74d1:78242295",
+      "token": "0x0d0a2a82f0d3897600902cd08e6a5be1b65f74d1",
+      "entryBlock": 78242295,
+      "entryTimestamp": 1790945244,
+      "entryTime": "2026-10-02T12:47:24Z",
+      "exitTimestamp": 1790947044,
+      "exitTime": "2026-10-02T13:17:24Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 992911,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xbb34d7d6e4b0e91ec8510dc2f806953dbe3c50fe9d675e35a2d69d05f3577f1b": 992911,
+        "0x1ef002f3c873c00ca3948bcdae4c10ac85fe5727f7dc5f8d319f5e4692f141f2": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x6c6aeb4637b2108b9b043913ef518639dc3c4872:78243390",
+      "token": "0x6c6aeb4637b2108b9b043913ef518639dc3c4872",
+      "entryBlock": 78243390,
+      "entryTimestamp": 1790945354,
+      "entryTime": "2026-10-02T12:49:14Z",
+      "exitTimestamp": 1790947154,
+      "exitTime": "2026-10-02T13:19:14Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 161809,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x5ba97d7c6f29769ab8b13c9c52fb819767db20f04a45d53786fce03697bf397e": 0,
+        "0x67df16d24e9240bd50978785a0cee295395f6a46b32db006e56f2fba05ebf7ac": 161809,
+        "0xf731847e41f0c2678cdf2464a2767e94d24ca5361623fa50ce2cc150e6be48d3": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x6e4f7d7974822c004cb6ee04e21b9b9eb65c6775:78299806",
+      "token": "0x6e4f7d7974822c004cb6ee04e21b9b9eb65c6775",
+      "entryBlock": 78299806,
+      "entryTimestamp": 1790951027,
+      "entryTime": "2026-10-02T14:23:47Z",
+      "exitTimestamp": 1790952827,
+      "exitTime": "2026-10-02T14:53:47Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 3000000,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x10de6f1a1e545c031200d5df2c8a325adf93cb4d333f0ff52fee5058c51c05c1": 998695,
+        "0x848079af623541ea8d2bc12f9273021d8a04e799c721f74aaf073fc9f9d6ae29": 420398,
+        "0x8fea9f718a5e6f690eb86390acf30cba6320d7aa9c27bd2d47120c5fc715eaa7": 3000000
+      }
+    },
+    {
+      "signalId": "3/300:0x7bc5a81458453de233ee3204169e053767deb3ca:78326795",
+      "token": "0x7bc5a81458453de233ee3204169e053767deb3ca",
+      "entryBlock": 78326795,
+      "entryTimestamp": 1790953738,
+      "entryTime": "2026-10-02T15:08:58Z",
+      "exitTimestamp": 1790955538,
+      "exitTime": "2026-10-02T15:38:58Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 998753,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x608746bba9dea50501ba3bf92daaff401e9b00dc314e40bd4199f9de0e4a7375": 998753,
+        "0xd4dcf272a668de96aa0f91fc2752d84a331f623530950fb99cfa76e890614883": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x4c2eb3c6af30fafdff09ef368e8db3b2a8e3cff5:78343795",
+      "token": "0x4c2eb3c6af30fafdff09ef368e8db3b2a8e3cff5",
+      "entryBlock": 78343795,
+      "entryTimestamp": 1790955448,
+      "entryTime": "2026-10-02T15:37:28Z",
+      "exitTimestamp": 1790957248,
+      "exitTime": "2026-10-02T16:07:28Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 230898,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xc3e87e728983d3db164d5da19feb050293c11a7f37d6a311e73c30f57629585e": 0,
+        "0xa8f371ca5380dd2d55b75eb9bbc4307842a64c37ba5020bd0eb65d66d8bc9227": 230898
+      }
+    },
+    {
+      "signalId": "3/300:0x647d23868453a33e8116368264cf856022b28954:78349129",
+      "token": "0x647d23868453a33e8116368264cf856022b28954",
+      "entryBlock": 78349129,
+      "entryTimestamp": 1790955983,
+      "entryTime": "2026-10-02T15:46:23Z",
+      "exitTimestamp": 1790957783,
+      "exitTime": "2026-10-02T16:16:23Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 1843035,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xa166560ff19d1bf2809492161930f5b20cd916a4b2f1c04f1e7c44f0294988b3": 332958,
+        "0xa2fc0621c151a270525f947b1664af7fd15acc8ffd24b1d8949e0386c44e7fdc": 887411,
+        "0xad444b94bbeb1a1af6ac740195686c09ded8c374fbdb8247c623dfb6503eff5f": 1843035
+      }
+    },
+    {
+      "signalId": "3/300:0x270245d8babaecfaa8431686d664445065c0aba3:78349548",
+      "token": "0x270245d8babaecfaa8431686d664445065c0aba3",
+      "entryBlock": 78349548,
+      "entryTimestamp": 1790956025,
+      "entryTime": "2026-10-02T15:47:05Z",
+      "exitTimestamp": 1790957825,
+      "exitTime": "2026-10-02T16:17:05Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 540685,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xf8f9bf3dba4cffad408844fb5d0ad2c0f1df47ee6299c1e25d4a7b25f55dcf92": 0,
+        "0xd387ba263b74ea683788f001c1f9243b103296a2368b265be90acfa5b027caaa": 108827,
+        "0xdafca5f210b307bdfa11543d2496cb0ca698be4436ef7a65896235b63d25d643": 540685
+      }
+    },
+    {
+      "signalId": "3/300:0xd5305d850c6a00aabdf8e44b8bbe57fb884b739c:78349552",
+      "token": "0xd5305d850c6a00aabdf8e44b8bbe57fb884b739c",
+      "entryBlock": 78349552,
+      "entryTimestamp": 1790956025,
+      "entryTime": "2026-10-02T15:47:05Z",
+      "exitTimestamp": 1790957825,
+      "exitTime": "2026-10-02T16:17:05Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 0,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x970bca928552372a2f7e6be293b89bf494c17e81a7a74996c1df1aaafe2740a1": 0,
+        "0x050268fdff9e294dd3d143b52594e7b34dd6814c60fc9a80f95a1fd693418a07": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x15da2596f4c21227185466066bf0f19d9d526b8a:78352578",
+      "token": "0x15da2596f4c21227185466066bf0f19d9d526b8a",
+      "entryBlock": 78352578,
+      "entryTimestamp": 1790956330,
+      "entryTime": "2026-10-02T15:52:10Z",
+      "exitTimestamp": 1790958130,
+      "exitTime": "2026-10-02T16:22:10Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 990514,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xc8461f475bdf0eef12fce87fbff89c3a340d203b8330abda11a3b460e6858efd": 990514,
+        "0xc55db5b869507be90021e516ec5f46ca7c6c5b9f637f414914a1e6d0b1a771b2": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x7aad7e1e9835f12a53673e1f97662bbca9aedb23:78381854",
+      "token": "0x7aad7e1e9835f12a53673e1f97662bbca9aedb23",
+      "entryBlock": 78381854,
+      "entryTimestamp": 1790959275,
+      "entryTime": "2026-10-02T16:41:15Z",
+      "exitTimestamp": 1790961075,
+      "exitTime": "2026-10-02T17:11:15Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 0,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x3f9d50670ed1c8e20fa2af306e5e98e53691af71f47c33114aaf3461bf24fa7b": 0,
+        "0xefecd906168e4aee53d8d25dd0fde3983eb38604582924accd35a2ca4c67b851": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x1bf14147642d58d47cb2229ce23548bf2a01cfbe:78397874",
+      "token": "0x1bf14147642d58d47cb2229ce23548bf2a01cfbe",
+      "entryBlock": 78397874,
+      "entryTimestamp": 1790960885,
+      "entryTime": "2026-10-02T17:08:05Z",
+      "exitTimestamp": 1790962685,
+      "exitTime": "2026-10-02T17:38:05Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 993679,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x238d05629724702aeccdfddc91ec548d9f710c9a96e7f023c55661c0338acf68": 993679,
+        "0xd888f3cc5e5b8a4a0f6bd07ce8004079c6fd9b2434d524402dbf22027415f5e9": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x44b5e3a7561f791073bf1a58b209c7f0e8748295:78398789",
+      "token": "0x44b5e3a7561f791073bf1a58b209c7f0e8748295",
+      "entryBlock": 78398789,
+      "entryTimestamp": 1790960978,
+      "entryTime": "2026-10-02T17:09:38Z",
+      "exitTimestamp": 1790962778,
+      "exitTime": "2026-10-02T17:39:38Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 992583,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x1368284e82801d74923694c0d9e268f9d615680b8848fbd463bbc89ca0d7fb5d": 992583,
+        "0xce88cdc5f9a6866b8bb5740dee59f64f055310864c315ff7ad7ded01e94723eb": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x3aa0ce359da22665ea478817a2f8c53dff802dea:78409281",
+      "token": "0x3aa0ce359da22665ea478817a2f8c53dff802dea",
+      "entryBlock": 78409281,
+      "entryTimestamp": 1790962033,
+      "entryTime": "2026-10-02T17:27:13Z",
+      "exitTimestamp": 1790963833,
+      "exitTime": "2026-10-02T17:57:13Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 999480,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xb90c216286d20c63daba17686e054d2899311a5b4fbc17b438dc4a2d652a2644": 999480,
+        "0x816cd4ff63be8132f2bcd0471d71bc1b59e4e445bb8bbc8b013a4ce56b4613fb": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x1169b994d2b0b264243a0dd72015293bd4192dea:78413379",
+      "token": "0x1169b994d2b0b264243a0dd72015293bd4192dea",
+      "entryBlock": 78413379,
+      "entryTimestamp": 1790962446,
+      "entryTime": "2026-10-02T17:34:06Z",
+      "exitTimestamp": 1790964246,
+      "exitTime": "2026-10-02T18:04:06Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 703067,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x36a1feb68e69f1325c92fd354cf61afaeecaaadb73adbd2733abf16e71e7b3aa": 165159,
+        "0xb222c809963aa347681205c6b6e7d3d3dc95e4f7778aae50098639709030716d": 703067
+      }
+    },
+    {
+      "signalId": "3/300:0x8826ffea474dadb69957c4385d6ad9e9de787915:78434839",
+      "token": "0x8826ffea474dadb69957c4385d6ad9e9de787915",
+      "entryBlock": 78434839,
+      "entryTimestamp": 1790964606,
+      "entryTime": "2026-10-02T18:10:06Z",
+      "exitTimestamp": 1790966406,
+      "exitTime": "2026-10-02T18:40:06Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 990928,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xea4d0c9da393faf3d737edae477c11427b2ffe88ec189214bee00ebe695c7eb0": 0,
+        "0xe2204d3a255a680f0af0feba12fe554f5c03f7cf6823c4e231fd519f0068f15e": 990928
+      }
+    },
+    {
+      "signalId": "3/300:0x007defdb60b9aa23058d268b7f77516a4ad7d3f0:78441240",
+      "token": "0x007defdb60b9aa23058d268b7f77516a4ad7d3f0",
+      "entryBlock": 78441240,
+      "entryTimestamp": 1790965250,
+      "entryTime": "2026-10-02T18:20:50Z",
+      "exitTimestamp": 1790967050,
+      "exitTime": "2026-10-02T18:50:50Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 994394,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x0ad4e6540043fef3e0359a44d28e8ab71c2c887b71566416657764b1d4ec6f28": 994394,
+        "0x3b0e41a2a68a5cbe81d0b231ac350ddf6b2d50ec122a906525240103333d4085": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x90e8fa19ae1a01431da01c6f80b3bc5cebb19438:78443216",
+      "token": "0x90e8fa19ae1a01431da01c6f80b3bc5cebb19438",
+      "entryBlock": 78443216,
+      "entryTimestamp": 1790965450,
+      "entryTime": "2026-10-02T18:24:10Z",
+      "exitTimestamp": 1790967250,
+      "exitTime": "2026-10-02T18:54:10Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 993750,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xe3b8f8d11860c8af9572d5d48edcebe637b8537811fab29a1958d7ea5a894c1c": 993750,
+        "0xd579ac0dd545908d1d1ce4248ab8866c784abe2cc6e53b03fabe50d8ba22476b": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x9161cdb8bd4c21375e85c3fe7a5ce74a6ba5da06:78467963",
+      "token": "0x9161cdb8bd4c21375e85c3fe7a5ce74a6ba5da06",
+      "entryBlock": 78467963,
+      "entryTimestamp": 1790967952,
+      "entryTime": "2026-10-02T19:05:52Z",
+      "exitTimestamp": 1790969430,
+      "exitTime": "2026-10-02T19:30:30Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 994616,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xcf13fd5f356ed13de2cab182d47797903d83af7436f6d754d06b5eaa837d83c0": 994616
+      }
+    },
+    {
+      "signalId": "3/300:0x02533eb712f3f2925136653b4727e05fa0a7cc49:78472599",
+      "token": "0x02533eb712f3f2925136653b4727e05fa0a7cc49",
+      "entryBlock": 78472599,
+      "entryTimestamp": 1790968418,
+      "entryTime": "2026-10-02T19:13:38Z",
+      "exitTimestamp": 1790970218,
+      "exitTime": "2026-10-02T19:43:38Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 999391,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x09cb5bec0754dbb1380489b6ee4c77ce69c6d6d90195603e701d919ecbf9ac8f": 0,
+        "0x43eac653543fe4ea4cce7a94f615486c8c22a18638507abf1ca6d3973a64251c": 999391
+      }
+    },
+    {
+      "signalId": "3/300:0x12d2811c1e6319a4b614529506d69024170bfc43:78474394",
+      "token": "0x12d2811c1e6319a4b614529506d69024170bfc43",
+      "entryBlock": 78474394,
+      "entryTimestamp": 1790968599,
+      "entryTime": "2026-10-02T19:16:39Z",
+      "exitTimestamp": 1790970399,
+      "exitTime": "2026-10-02T19:46:39Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 991422,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xa29219cec89bf237803811ddf7954af2c66a67f9c589584df9abddbaa50ff352": 991422,
+        "0x64798c52c5f0521931301794afd05896e6d151c4f96e07f8200c83edf61b1115": 0
+      }
+    },
+    {
+      "signalId": "3/300:0xe07119cdd031e8a2043c3c9c4f9c56f34e54a81e:78481039",
+      "token": "0xe07119cdd031e8a2043c3c9c4f9c56f34e54a81e",
+      "entryBlock": 78481039,
+      "entryTimestamp": 1790969269,
+      "entryTime": "2026-10-02T19:27:49Z",
+      "exitTimestamp": 1790971069,
+      "exitTime": "2026-10-02T19:57:49Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 0,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x549845a0d20e209be4d8155e61d76b7030a0e02a4c9f6eb8d4fc66acfe01f88f": 0
+      }
+    },
+    {
+      "signalId": "3/300:0xabb8072260759e80e0adca24c95ffb1c5875de4c:78512862",
+      "token": "0xabb8072260759e80e0adca24c95ffb1c5875de4c",
+      "entryBlock": 78512862,
+      "entryTimestamp": 1790972475,
+      "entryTime": "2026-10-02T20:21:15Z",
+      "exitTimestamp": 1790974275,
+      "exitTime": "2026-10-02T20:51:15Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 248681,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x9c6840af29a60af36e21758bb837527f8fee3b868e053f4a58077d1f22d86b97": 0,
+        "0xb468a350ce069a015640d9ca9cbbf77efce50083e5d6763437a3e5b17b90eb0e": 248681
+      }
+    },
+    {
+      "signalId": "3/300:0x1ef76f3be476e47bf26032ff4a9e26b6ea7edbd2:78551266",
+      "token": "0x1ef76f3be476e47bf26032ff4a9e26b6ea7edbd2",
+      "entryBlock": 78551266,
+      "entryTimestamp": 1790976353,
+      "entryTime": "2026-10-02T21:25:53Z",
+      "exitTimestamp": 1790977935,
+      "exitTime": "2026-10-02T21:52:15Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 2197831,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x2abd6b4cb9785e3e893b2b06ffe9d6032626514886160db4fc0318f578eb1051": 2197831,
+        "0x73ca12017faa37deb888878eb92215d2f773906e5fafd0844e2738935baf2ca0": 437701
+      }
+    },
+    {
+      "signalId": "3/300:0x5c7699be7dae0b0393d4a562a46c97f202b5dae4:78563394",
+      "token": "0x5c7699be7dae0b0393d4a562a46c97f202b5dae4",
+      "entryBlock": 78563394,
+      "entryTimestamp": 1790977571,
+      "entryTime": "2026-10-02T21:46:11Z",
+      "exitTimestamp": 1790979371,
+      "exitTime": "2026-10-02T22:16:11Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 1366192,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x11935745ee4df69d6b7470c32625585a81414f4d068ff5bb95521a7c46c029cc": 1366192,
+        "0x52410f27f9a66631bad6767f0f890b5292133b1ab0a2d243b30725d8daf49bc9": 633068
+      }
+    },
+    {
+      "signalId": "3/300:0xd1670c3b6355c73f0d755310100166cb230babc5:78573181",
+      "token": "0xd1670c3b6355c73f0d755310100166cb230babc5",
+      "entryBlock": 78573181,
+      "entryTimestamp": 1790978554,
+      "entryTime": "2026-10-02T22:02:34Z",
+      "exitTimestamp": 1790980354,
+      "exitTime": "2026-10-02T22:32:34Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 0,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xc4a8b9ea965e4acc4c3227ed89fd6579222710978f5b4ab63689a89e918c8564": 0
+      }
+    },
+    {
+      "signalId": "3/300:0xbf3d0afa7417c336bbba6acaecafbc38b918e4cb:78575522",
+      "token": "0xbf3d0afa7417c336bbba6acaecafbc38b918e4cb",
+      "entryBlock": 78575522,
+      "entryTimestamp": 1790978790,
+      "entryTime": "2026-10-02T22:06:30Z",
+      "exitTimestamp": 1790980590,
+      "exitTime": "2026-10-02T22:36:30Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 547736,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x7771cc8042213cfe86621c3675d7928a161afbd49bccb2239e0066fab249a3a2": 0,
+        "0x1c62ca032a441f6d85cb34ccbb9ce9a77f3df076e55474a7abcad1e9ae483db2": 547736
+      }
+    },
+    {
+      "signalId": "3/300:0x523bbb74cb0585b5f76b6bea43b5a80686a2906a:78582444",
+      "token": "0x523bbb74cb0585b5f76b6bea43b5a80686a2906a",
+      "entryBlock": 78582444,
+      "entryTimestamp": 1790979484,
+      "entryTime": "2026-10-02T22:18:04Z",
+      "exitTimestamp": 1790980694,
+      "exitTime": "2026-10-02T22:38:14Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 4910561,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x42b022a4bc56c2caecce462fb387dc5d5e4f432ebf7fc3d583ea2b52ac8305c9": 2282097,
+        "0x136d8a9fa75d0c8a51a920f87a06d622dc5bef0796add9fb67045d722c957f5f": 4910561
+      }
+    },
+    {
+      "signalId": "3/300:0xa9ddbd54f2cbf7de7ce5caefed8fd64b0007f836:78588009",
+      "token": "0xa9ddbd54f2cbf7de7ce5caefed8fd64b0007f836",
+      "entryBlock": 78588009,
+      "entryTimestamp": 1790980044,
+      "entryTime": "2026-10-02T22:27:24Z",
+      "exitTimestamp": 1790980295,
+      "exitTime": "2026-10-02T22:31:35Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 593459,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x20045bfa3fb2ef67f663ba8b95a20124a265ae9c25f46a303ee1ac5fc25358fb": 593459
+      }
+    },
+    {
+      "signalId": "3/300:0xcb8f0103c7f7ca153baa10753cdd5f4835eeef82:78589890",
+      "token": "0xcb8f0103c7f7ca153baa10753cdd5f4835eeef82",
+      "entryBlock": 78589890,
+      "entryTimestamp": 1790980231,
+      "entryTime": "2026-10-02T22:30:31Z",
+      "exitTimestamp": 1790982031,
+      "exitTime": "2026-10-02T23:00:31Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 802184,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xb993af2570c977165d5bd97714fb20509586056418170f69ab6df728b0d6ad2e": 802184
+      }
+    },
+    {
+      "signalId": "3/300:0x14a64d6f3db9900be9c554d0961f539a16f43f9c:78605435",
+      "token": "0x14a64d6f3db9900be9c554d0961f539a16f43f9c",
+      "entryBlock": 78605435,
+      "entryTimestamp": 1790981793,
+      "entryTime": "2026-10-02T22:56:33Z",
+      "exitTimestamp": 1790983593,
+      "exitTime": "2026-10-02T23:26:33Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 61258,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x3fe3d7254b2ad2858b9045d667eb21a399814416642a5f619427ef6396b19143": 61258,
+        "0xcbeee69af7873c792c3ea0e1168072d9e430837d12b112b05d96cb8d955f339d": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x316fa3ab9a8fd8d7567a823dedecf28d9fee2894:78608631",
+      "token": "0x316fa3ab9a8fd8d7567a823dedecf28d9fee2894",
+      "entryBlock": 78608631,
+      "entryTimestamp": 1790982114,
+      "entryTime": "2026-10-02T23:01:54Z",
+      "exitTimestamp": 1790982663,
+      "exitTime": "2026-10-02T23:11:03Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 33429,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x5d8ff9706c4c4dead1cf8f05805197d38d25c8c54a7e128a755cf6a65cefca98": 33429
+      }
+    },
+    {
+      "signalId": "3/300:0x2054031be916c1ecdac3894f37456421fd1c920c:78652379",
+      "token": "0x2054031be916c1ecdac3894f37456421fd1c920c",
+      "entryBlock": 78652379,
+      "entryTimestamp": 1790986522,
+      "entryTime": "2026-10-03T00:15:22Z",
+      "exitTimestamp": 1790987721,
+      "exitTime": "2026-10-03T00:35:21Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 645111,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x1339038d92d581acd1da051e0ff2d3e827872d860d2bf6d81fb91557438bcdd0": 645111,
+        "0xdc33c6fe84297c86ea837b7376ce56c4aa016dfe042963afd73f3a59036479c2": 89634
+      }
+    },
+    {
+      "signalId": "3/300:0xd7855d7459ef3d902cfad6128c7afcacd6a0da06:78660476",
+      "token": "0xd7855d7459ef3d902cfad6128c7afcacd6a0da06",
+      "entryBlock": 78660476,
+      "entryTimestamp": 1790987337,
+      "entryTime": "2026-10-03T00:28:57Z",
+      "exitTimestamp": 1790988463,
+      "exitTime": "2026-10-03T00:47:43Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 1839052,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x54f50482ea46a6d28a9a16a22dcd65542ad3eda5165aa4717b36db9db6cb6ecb": 421563,
+        "0xf3560e6a648b45b60b408852248529a641115e8142fb72bfe21e953044e40cac": 1839052,
+        "0xebb77473464c87d160b440c99f56b1f193c2635bd30b154684f6dd314a937408": 1129039
+      }
+    },
+    {
+      "signalId": "3/300:0xb945b005e39e2266a3f5bc12e34ec6b68e0bd9cf:78682659",
+      "token": "0xb945b005e39e2266a3f5bc12e34ec6b68e0bd9cf",
+      "entryBlock": 78682659,
+      "entryTimestamp": 1790989580,
+      "entryTime": "2026-10-03T01:06:20Z",
+      "exitTimestamp": 1790991380,
+      "exitTime": "2026-10-03T01:36:20Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 0,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x6dfc629b36b1ddd0e5cc22079741226056c62547bf042a5171ad47a6522128eb": 0
+      }
+    },
+    {
+      "signalId": "3/300:0xd79a17a73f1c38a3eab7c943de6051f824fc4d8e:78683563",
+      "token": "0xd79a17a73f1c38a3eab7c943de6051f824fc4d8e",
+      "entryBlock": 78683563,
+      "entryTimestamp": 1790989670,
+      "entryTime": "2026-10-03T01:07:50Z",
+      "exitTimestamp": 1790991470,
+      "exitTime": "2026-10-03T01:37:50Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 3227022,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x89c00421c3a8f1353def4c68de94be371a81099806f0094f36ca2481aa250f84": 3227022,
+        "0x7b61d922e46111f2e2ef0a701953841746afd35f162278cbd3e4badb2c01857b": 0
+      }
+    },
+    {
+      "signalId": "3/300:0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796:78698587",
+      "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+      "entryBlock": 78698587,
+      "entryTimestamp": 1790991188,
+      "entryTime": "2026-10-03T01:33:08Z",
+      "exitTimestamp": 1790991291,
+      "exitTime": "2026-10-03T01:34:51Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 9506701,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e": 21960,
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049": 9506701
+      }
+    },
+    {
+      "signalId": "3/300:0x65425be0b1d84a6b57d8b6c19aae62513f87b950:78713982",
+      "token": "0x65425be0b1d84a6b57d8b6c19aae62513f87b950",
+      "entryBlock": 78713982,
+      "entryTimestamp": 1790992741,
+      "entryTime": "2026-10-03T01:59:01Z",
+      "exitTimestamp": 1790993033,
+      "exitTime": "2026-10-03T02:03:53Z",
+      "exitReason": "liquidity",
+      "maxBirthUsdgDepositRaw": 974010,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x50cf3e2eccbdb3729b94a5e8866d0e3615a8e5684a82102c7f7ea0647c1f05c1": 974010
+      }
+    },
+    {
+      "signalId": "3/300:0x96745f5e38ba14575d8b53941c66e52ee43b9c85:78727014",
+      "token": "0x96745f5e38ba14575d8b53941c66e52ee43b9c85",
+      "entryBlock": 78727014,
+      "entryTimestamp": 1790994056,
+      "entryTime": "2026-10-03T02:20:56Z",
+      "exitTimestamp": 1790995856,
+      "exitTime": "2026-10-03T02:50:56Z",
+      "exitReason": "max_hold_30m",
+      "maxBirthUsdgDepositRaw": 3058782,
+      "priceStatus": "missing_causal_executable_quote",
+      "birthUsdgDepositByHighFeePoolRaw": {
+        "0x2c1016ac91bf965ca1062ecb34a2d191092154382d4717c471c2fe1f8ebfeb45": 3058782,
+        "0x4a17f7524774d2deebcf5235d377275e029164838a74ae3f49898808df3f78f1": 3000000
+      }
+    }
+  ]
+}

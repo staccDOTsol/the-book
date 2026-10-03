@@ -31,6 +31,7 @@ An evidentiary record of how newly launched tokens are worked by an industrializ
 | [`40-onchain-xgasdev.md`](forensics/record/40-onchain-xgasdev.md) | Launch forensics and five market-structure indicators |
 | [`50-cluster.md`](forensics/record/50-cluster.md) | Wallet map and funding |
 | [`60-launch-replay.md`](forensics/record/60-launch-replay.md) | LAUNCH pool timing, liquidity exits, and bounded price-print replay |
+| [`70-cadence-matrix.md`](forensics/record/70-cadence-matrix.md) | 24-hour, 160-cell pool-burst cadence and 30-minute exit replay |
 
 Raw data: [`forensics/*.json`](forensics/). Chart: [`exhibits/xgasdev_price_bots.png`](exhibits/xgasdev_price_bots.png).
 
