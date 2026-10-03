@@ -13,6 +13,9 @@ On-chain forensics of launchpad bot structure, built from public data, and a sum
 | [70-cadence-matrix.md](70-cadence-matrix.md) | Historical token-swap signal comparison with a frozen poolset; superseded for LP decisions |
 | [90-high-fee-lp-screen.md](90-high-fee-lp-screen.md) | 24-hour v4 no-hook high-fee LP firehose, one-sided range activity, cash overlap, and gas hurdles |
 | [95-v4-fee-cutoff-sensitivity.md](95-v4-fee-cutoff-sensitivity.md) | 50/70/90/99% static-fee cutoffs and 30-minute range-entry frequency |
+| [120-pons-hook-and-burst-universe.md](120-pons-hook-and-burst-universe.md) | Pons graduation hook, its fee routing, and its effect on the RH burst universe |
+| [130-lower-fee-burst-lp-replay.md](130-lower-fee-burst-lp-replay.md) | Lower-fee LP fee marks, gas, and causal route-fork checks after funded 4–5-pool bursts |
+| [140-nothingburger-two-fee-arb-model.md](140-nothingburger-two-fee-arb-model.md) | Creator-tax and LP-fee route math for a proposed NOTHINGBURGER quote token |
 
 ## In one paragraph
 
