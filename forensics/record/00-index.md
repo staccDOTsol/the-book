@@ -10,7 +10,9 @@ On-chain forensics of launchpad bot structure, built from public data, and a sum
 | [40-onchain-xgasdev.md](40-onchain-xgasdev.md) | The XGAS.DEV launch forensics and five market-structure indicators. Chart: `exhibits/xgasdev_price_bots.png` |
 | [50-cluster.md](50-cluster.md) | The wallet activity, funding topology, and correction identifying the shared contract as OKX's public DEX Router |
 | [60-launch-replay.md](60-launch-replay.md) | LAUNCH pool signals, liquidity exits, and price-print limitations |
-| [70-cadence-matrix.md](70-cadence-matrix.md) | 24-hour, 160-cell entry cadence and 30-minute LP or time-cap exits |
+| [70-cadence-matrix.md](70-cadence-matrix.md) | Historical token-swap signal comparison with a frozen poolset; superseded for LP decisions |
+| [90-high-fee-lp-screen.md](90-high-fee-lp-screen.md) | 24-hour v4 no-hook high-fee LP firehose, one-sided range activity, cash overlap, and gas hurdles |
+| [95-v4-fee-cutoff-sensitivity.md](95-v4-fee-cutoff-sensitivity.md) | 50/70/90/99% static-fee cutoffs and 30-minute range-entry frequency |
 
 ## In one paragraph
 

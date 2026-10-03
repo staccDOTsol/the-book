@@ -1,0 +1,934 @@
+{
+  "schemaVersion": 1,
+  "source": ".local/high-fee-pool-screen-24h.json",
+  "entryRule": "Every birth-cohort no-hook >=70% static-fee USDG/ETH v4 pool with completed-block positive LP and a legal adjacent one-tick quote-only range",
+  "entryWindow": [
+    "2026-10-02T04:17:55Z",
+    "2026-10-03T04:17:55Z"
+  ],
+  "quotePairBirths": 881,
+  "legalQuoteOnlyEntries": 880,
+  "initialCashUsd": 104.0,
+  "cashModel": "Stake fraction of remaining quote-equivalent cash; principal returns unchanged at fixed timeout; no token-conversion PnL, fees, gas, FX, bridge, or dynamic-liquidity exit is applied to cash. ETH/USDG funding is assumed frictionless.",
+  "rangeModel": "Observed swap post-tick path. Interior crossing is necessary but insufficient for core fee accrual. Added LP changes pool state and route flow, so crossing outcomes are unidentified.",
+  "gasHurdleModel": "Illustrative fixed gas USD per entry+exit, $0.03/$0.05, charged externally; gross crossing-position return needed to offset all firehose gas before any inventory loss. Not measured realized PnL.",
+  "holdsMinutes": {
+    "5": {
+      "observedPathStates": {
+        "no_swap": 751,
+        "crossed_end_token": 23,
+        "swap_no_entry": 95,
+        "crossed_end_mixed": 10,
+        "crossed_end_quote": 1
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 0.10358586583288901,
+          "stakeUsdMinimum": 0.10184556140506422,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 3.521003636183474,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 7.497862180175362,
+            "0.05": 12.496436966958937
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 0.25742901031144483,
+          "stakeUsdMinimum": 0.2468053074905259,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 8.74704528143034,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 3.0181620365046284,
+            "0.05": 5.030270060841048
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 0.5098301969521106,
+          "stakeUsdMinimum": 0.46895723687571994,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 17.31321220295575,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.5248470180185818,
+            "0.05": 2.5414116966976366
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 1.000211530935716,
+          "stakeUsdMinimum": 0.8487690343035638,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 428,
+          "crossingStakeUsd": 33.93140315644512,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.778040326781636,
+            "0.05": 1.2967338779693935
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 2.3661594145312295,
+          "stakeUsdMinimum": 1.6072326170448397,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 80.11980914972501,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.3295065262907033,
+            "0.05": 0.5491775438178389
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 4.346460298188925,
+          "stakeUsdMinimum": 2.187092230109821,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 147.22473491073484,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.17931769424483476,
+            "0.05": 0.2988628237413913
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 7.565258521313716,
+          "stakeUsdMinimum": 2.2131143397222077,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 255.99729305541587,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.10312609045551578,
+            "0.05": 0.17187681742585964
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 22,
+          "stakeUsdMedian": 12.937254875730314,
+          "stakeUsdMinimum": 1.18819316290319,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 481.0337705577051,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.05488180168596508,
+            "0.05": 0.09146966947660846
+          }
+        }
+      ]
+    },
+    "10": {
+      "observedPathStates": {
+        "no_swap": 719,
+        "crossed_end_token": 34,
+        "swap_no_entry": 111,
+        "crossed_end_mixed": 13,
+        "crossed_end_quote": 3
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 0.1032745411550797,
+          "stakeUsdMinimum": 0.10104940809501232,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 5.163428278345575,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 5.11288209632281,
+            "0.05": 8.521470160538017
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 0.2554895462300627,
+          "stakeUsdMinimum": 0.24214825530861514,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 12.774608372112535,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 2.066599556792067,
+            "0.05": 3.4443325946534458
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 0.5021142689303089,
+          "stakeUsdMinimum": 0.45228571854417854,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 25.118799439100048,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.0510056447564777,
+            "0.05": 1.7516760745941298
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 0.9696812187270776,
+          "stakeUsdMinimum": 0.7948677546158611,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 671,
+          "crossingStakeUsd": 48.62655854968954,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.5429131895695002,
+            "0.05": 0.904855315949167
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 2.188590557567851,
+          "stakeUsdMinimum": 1.343600501489214,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 111.28563640642274,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.23722738039242905,
+            "0.05": 0.3953789673207151
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 3.748789096180885,
+          "stakeUsdMinimum": 1.4326422990909293,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 196.64687508905996,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.1342507984835438,
+            "0.05": 0.22375133080590634
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 5.87272214684422,
+          "stakeUsdMinimum": 0.9060596571801898,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 1,
+          "crossingStakeUsd": 323.898126533803,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.08150710929550503,
+            "0.05": 0.13584518215917504
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 30,
+          "stakeUsdMedian": 8.364466851558578,
+          "stakeUsdMinimum": 0.13260774670688769,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 18,
+          "crossingStakeUsd": 542.7582350881349,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.04864044116385093,
+            "0.05": 0.08106740193975155
+          }
+        }
+      ]
+    },
+    "15": {
+      "observedPathStates": {
+        "no_swap": 702,
+        "crossed_end_token": 41,
+        "swap_no_entry": 124,
+        "crossed_end_mixed": 11,
+        "crossed_end_quote": 2
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 0.10286736463926235,
+          "stakeUsdMinimum": 0.10015427416785291,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 5.552398080439401,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 4.754702313763277,
+            "0.05": 7.924503856272129
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 0.2530246917080081,
+          "stakeUsdMinimum": 0.23690684365172782,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 13.65043160539766,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.93400478191187,
+            "0.05": 3.22334130318645
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 0.4927611637058192,
+          "stakeUsdMinimum": 0.4333917152042417,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 26.571827711761507,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.9935334628229034,
+            "0.05": 1.6558891047048392
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 0.9363552048611659,
+          "stakeUsdMinimum": 0.7330924666005122,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 781,
+          "crossingStakeUsd": 50.490363603435746,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.5228720515334839,
+            "0.05": 0.8714534192224733
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 2.028454779413111,
+          "stakeUsdMinimum": 1.189883664138826,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 110.3423500111079,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.23925537200668986,
+            "0.05": 0.39875895334448314
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 3.3222032398197174,
+          "stakeUsdMinimum": 1.201056978588257,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 184.50327804058114,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.1430868886470048,
+            "0.05": 0.238478147745008
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 4.883629601336013,
+          "stakeUsdMinimum": 0.6893609873672736,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 7,
+          "crossingStakeUsd": 283.15211087753204,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.09323610520925424,
+            "0.05": 0.1553935086820904
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 39,
+          "stakeUsdMedian": 6.422982967328085,
+          "stakeUsdMinimum": 0.12512971701167583,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 38,
+          "crossingStakeUsd": 438.8318553969892,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.06015971647299223,
+            "0.05": 0.10026619412165373
+          }
+        }
+      ]
+    },
+    "20": {
+      "observedPathStates": {
+        "no_swap": 685,
+        "crossed_end_token": 46,
+        "swap_no_entry": 136,
+        "crossed_end_mixed": 11,
+        "crossed_end_quote": 2
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 0.10255844984060031,
+          "stakeUsdMinimum": 0.09957562771091381,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 14,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 6.046959513884691,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 4.3658304540293,
+            "0.05": 7.276384090048834
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 0.2511232542833467,
+          "stakeUsdMinimum": 0.23367693211259455,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 14.797300653866476,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.7841091843397656,
+            "0.05": 2.973515307232943
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 0.48535530478789635,
+          "stakeUsdMinimum": 0.42268834406639627,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 28.59481028120128,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.9232444538146075,
+            "0.05": 1.5387407563576792
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 0.9101558003215939,
+          "stakeUsdMinimum": 0.703662391282123,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 829,
+          "crossingStakeUsd": 53.622997098092,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.4923260807617066,
+            "0.05": 0.8205434679361776
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 1.909935565135222,
+          "stakeUsdMinimum": 1.1318604456119872,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 113.53691779361368,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.2325234867480696,
+            "0.05": 0.387539144580116
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 3.0057538812725757,
+          "stakeUsdMinimum": 1.1482953983389939,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 0,
+          "crossingStakeUsd": 182.8571784194918,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.14437497192172508,
+            "0.05": 0.24062495320287514
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 4.159332317617897,
+          "stakeUsdMinimum": 0.648820136129657,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 8,
+          "crossingStakeUsd": 268.3085886642452,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.09839416669973362,
+            "0.05": 0.1639902778328894
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 45,
+          "stakeUsdMedian": 5.240803798321155,
+          "stakeUsdMinimum": 0.05736923961717953,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 2,
+          "entriesBelowOneDollar": 63,
+          "crossingStakeUsd": 382.0684491441239,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.06909756631079837,
+            "0.05": 0.1151626105179973
+          }
+        }
+      ]
+    },
+    "30": {
+      "observedPathStates": {
+        "no_swap": 666,
+        "crossed_end_token": 48,
+        "swap_no_entry": 149,
+        "crossed_end_mixed": 13,
+        "crossed_end_quote": 4
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 0.10185024106899483,
+          "stakeUsdMinimum": 0.09820529083663378,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 97,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 6.617399751670842,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 3.98948242371699,
+            "0.05": 6.6491373728616505
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 0.24687090105766601,
+          "stakeUsdMinimum": 0.22581740903457503,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 16.0412745509916,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.6457545138374352,
+            "0.05": 2.7429241897290586
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 0.46971342450964987,
+          "stakeUsdMinimum": 0.39509035325044506,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 30.55972757106603,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.8638820466775213,
+            "0.05": 1.4398034111292022
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 0.8542190063498971,
+          "stakeUsdMinimum": 0.6148532449511154,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 869,
+          "crossingStakeUsd": 55.93537479121216,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.4719732387338472,
+            "0.05": 0.7866220645564121
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 1.6762816503931504,
+          "stakeUsdMinimum": 0.7762984314559381,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 23,
+          "crossingStakeUsd": 112.48319877598315,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.234701718010146,
+            "0.05": 0.39116953001691
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 2.446470410216933,
+          "stakeUsdMinimum": 0.5378737247479186,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 25,
+          "crossingStakeUsd": 172.19197764279335,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.15331724718770545,
+            "0.05": 0.2555287453128424
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 3.1975790383319604,
+          "stakeUsdMinimum": 0.21887741627383545,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 36,
+          "crossingStakeUsd": 241.24095651792067,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.1094341540551754,
+            "0.05": 0.18239025675862566
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 59,
+          "stakeUsdMedian": 3.541172326270128,
+          "stakeUsdMinimum": 0.0022453553591577635,
+          "entriesBelowOneCent": 6,
+          "entriesBelowTenCents": 21,
+          "entriesBelowOneDollar": 106,
+          "crossingStakeUsd": 318.2598311455257,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.08295109032446034,
+            "0.05": 0.1382518172074339
+          }
+        }
+      ]
+    },
+    "45": {
+      "observedPathStates": {
+        "no_swap": 647,
+        "crossed_end_token": 55,
+        "swap_no_entry": 157,
+        "crossed_end_mixed": 15,
+        "crossed_end_quote": 6
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 0.10094354867402136,
+          "stakeUsdMinimum": 0.09616774888899364,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 292,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 7.655005804917358,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 3.4487237074387833,
+            "0.05": 5.747872845731306
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 0.2415969916902635,
+          "stakeUsdMinimum": 0.21509690879347415,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 18.28526634683493,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.4437853679156103,
+            "0.05": 2.4063089465260172
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 0.4506225794037413,
+          "stakeUsdMinimum": 0.36278828126096274,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 34.08650533650233,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.7745000474345766,
+            "0.05": 1.290833412390961
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 0.7956813635743445,
+          "stakeUsdMinimum": 0.5409119466270036,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 876,
+          "crossingStakeUsd": 60.19949311533145,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.43854189850772207,
+            "0.05": 0.7309031641795368
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 1.4476471172520895,
+          "stakeUsdMinimum": 0.6908985645957859,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 117,
+          "crossingStakeUsd": 112.41606298627335,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.23484188379042942,
+            "0.05": 0.3914031396507157
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 2.008765439089748,
+          "stakeUsdMinimum": 0.5479451182107704,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 90,
+          "crossingStakeUsd": 158.692341238812,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.16635963521561084,
+            "0.05": 0.2772660586926847
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 2.4068595878752514,
+          "stakeUsdMinimum": 0.2085718072433536,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 84,
+          "crossingStakeUsd": 199.77859040278406,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.13214629228674393,
+            "0.05": 0.22024382047790655
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 81,
+          "stakeUsdMedian": 2.5469343885173394,
+          "stakeUsdMinimum": 0.035790572856397376,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 9,
+          "entriesBelowOneDollar": 155,
+          "crossingStakeUsd": 240.95883934020412,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.10956228072930937,
+            "0.05": 0.18260380121551562
+          }
+        }
+      ]
+    },
+    "60": {
+      "observedPathStates": {
+        "no_swap": 634,
+        "crossed_end_token": 58,
+        "swap_no_entry": 162,
+        "crossed_end_mixed": 17,
+        "crossed_end_quote": 9
+      },
+      "cashEnvelope": [
+        {
+          "fractionOfAvailableCash": 0.001,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 0.09982493401842776,
+          "stakeUsdMinimum": 0.0943639166367098,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 457,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 8.371108204985457,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 3.153704306949149,
+            "0.05": 5.256173844915249
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.0025,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 0.23547910846487458,
+          "stakeUsdMinimum": 0.20516643092202255,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 19.71545853764446,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 1.33905077325958,
+            "0.05": 2.2317512887659667
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.005,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 0.42995391684626283,
+          "stakeUsdMinimum": 0.3300257201773461,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 880,
+          "crossingStakeUsd": 36.035016294410326,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.7326207315769997,
+            "0.05": 1.2210345526283328
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.01,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 0.7350608155715237,
+          "stakeUsdMinimum": 0.4472881080723205,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 876,
+          "crossingStakeUsd": 61.75555628994486,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.4274918984787526,
+            "0.05": 0.7124864974645876
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.025,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 1.2730224531601082,
+          "stakeUsdMinimum": 0.4624962962650031,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 212,
+          "crossingStakeUsd": 109.33045557520107,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.24146977034995717,
+            "0.05": 0.40244961724992867
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.05,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 1.6547538061741602,
+          "stakeUsdMinimum": 0.4305639020119112,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 147,
+          "crossingStakeUsd": 149.659401489838,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.17640054508565292,
+            "0.05": 0.29400090847608823
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.1,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 1.8338707155768126,
+          "stakeUsdMinimum": 0.17251671597478196,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 0,
+          "entriesBelowOneDollar": 164,
+          "crossingStakeUsd": 183.87540280774596,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.14357548425116418,
+            "0.05": 0.2392924737519403
+          }
+        },
+        {
+          "fractionOfAvailableCash": 0.25,
+          "entryCount": 880,
+          "peakOpenPositions": 101,
+          "stakeUsdMedian": 1.8129871041758627,
+          "stakeUsdMinimum": 0.013048164648373857,
+          "entriesBelowOneCent": 0,
+          "entriesBelowTenCents": 18,
+          "entriesBelowOneDollar": 236,
+          "crossingStakeUsd": 193.49348017633764,
+          "gasOnlyBreakEvenGrossReturnOnCrossingStake": {
+            "0.03": 0.13643870571732297,
+            "0.05": 0.22739784286220496
+          }
+        }
+      ]
+    }
+  }
+}

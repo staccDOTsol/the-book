@@ -31,7 +31,9 @@ An evidentiary record of how newly launched tokens are worked by an industrializ
 | [`40-onchain-xgasdev.md`](forensics/record/40-onchain-xgasdev.md) | Launch forensics and five market-structure indicators |
 | [`50-cluster.md`](forensics/record/50-cluster.md) | Wallet map and funding |
 | [`60-launch-replay.md`](forensics/record/60-launch-replay.md) | LAUNCH pool timing, liquidity exits, and bounded price-print replay |
-| [`70-cadence-matrix.md`](forensics/record/70-cadence-matrix.md) | 24-hour, 160-cell pool-burst cadence and 30-minute exit replay |
+| [`70-cadence-matrix.md`](forensics/record/70-cadence-matrix.md) | Historical token-swap signal comparison with a frozen poolset |
+| [`90-high-fee-lp-screen.md`](forensics/record/90-high-fee-lp-screen.md) | V4 no-hook LP firehose activity, cash overlap, and gas hurdles |
+| [`95-v4-fee-cutoff-sensitivity.md`](forensics/record/95-v4-fee-cutoff-sensitivity.md) | Fee-cutoff sensitivity for quote-only LP activity |
 
 Raw data: [`forensics/*.json`](forensics/). Chart: [`exhibits/xgasdev_price_bots.png`](exhibits/xgasdev_price_bots.png).
 

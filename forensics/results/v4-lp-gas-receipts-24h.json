@@ -1,0 +1,185 @@
+{
+  "sampleRule": "10 approximately equal quantile unique txs per type across 24h events; later_add excludes pool Initialize tx",
+  "receipts": [
+    {
+      "kind": "later_add",
+      "tx": "0x60fc48419e0577f33f234a74142e187f2ff6d3fecb56c12c123143bb7ec31a70",
+      "poolId": "0xd2a2819b99728240f119477ffb9eceaec0ac07473837b1fc10c3fe24e2403b88",
+      "block": 77952039,
+      "gasUsed": 317300,
+      "effectiveGasPriceWei": 34768000,
+      "ethFee": 1.10318864e-05
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x4bf012fb04d9152215417af7b1bfc073756c4150af1c1f75aecf541f6ff37a09",
+      "poolId": "0xc76ae93605e9e11c4bfdf641a0c025ff529b263023b43ba4ca4b686fda181a26",
+      "block": 78082145,
+      "gasUsed": 268262,
+      "effectiveGasPriceWei": 36876000,
+      "ethFee": 9.892429512e-06
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x284dc3d6ef789566bbe99bc467d2db2f43f3e8a7e12b10bc3bc01dc842a356c3",
+      "poolId": "0x3243cd51d79ed57b8b4dbb8975200d88c9052f3dc51338608870e66ee24203d9",
+      "block": 78300151,
+      "gasUsed": 182918,
+      "effectiveGasPriceWei": 31720000,
+      "ethFee": 5.80215896e-06
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x67aa7db989b8e1c0e3d39e4d7f0d301ccd270374a6fe32fdb3a252f2221eb194",
+      "poolId": "0x3ff1ad3796f7763fd68ba3e0e7ae21e8987e0278da2bf96472d1a3fc5531f18f",
+      "block": 78366534,
+      "gasUsed": 325196,
+      "effectiveGasPriceWei": 31950000,
+      "ethFee": 1.03900122e-05
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x01e7746f9823deae4a72251a14a66ecaa1b9b6cef28bafad71c2f86c0e914e14",
+      "poolId": "0x113b3555a5d20f15247c9ef7d596d3abbebe0120eb24f964e215d8b0c845195d",
+      "block": 78471594,
+      "gasUsed": 329786,
+      "effectiveGasPriceWei": 31962000,
+      "ethFee": 1.0540620132e-05
+    },
+    {
+      "kind": "later_add",
+      "tx": "0xa6b2a4576464bb12b25d68b8f808b3251db668f3901b995960ad0d1bdb9bbe9c",
+      "poolId": "0xc9c1f1a297ca8492cc440e6f0f5d9e379362e48c4dbf3636757ffed990668acf",
+      "block": 78536464,
+      "gasUsed": 184758,
+      "effectiveGasPriceWei": 31816000,
+      "ethFee": 5.878260528e-06
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x4b94bf221e37a0be3f4baada40f24b2afeb0207022e7b958a97b73cb1a2acaff",
+      "poolId": "0xb993af2570c977165d5bd97714fb20509586056418170f69ab6df728b0d6ad2e",
+      "block": 78596016,
+      "gasUsed": 289398,
+      "effectiveGasPriceWei": 31598000,
+      "ethFee": 9.144398004e-06
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x970edb93a5eb90bbd0680d627785c04021eed4cab7619284047e08940a39c861",
+      "poolId": "0x9f90be3252f769f7f347b2328102e41719217a29556f2b6f4d64d0cfe1895aab",
+      "block": 78619756,
+      "gasUsed": 289582,
+      "effectiveGasPriceWei": 31798000,
+      "ethFee": 9.208128436e-06
+    },
+    {
+      "kind": "later_add",
+      "tx": "0xf25786c8a0b4a1ccbc911beb9bb144c7a383a4a70c34dbd647a7331b7e2212f4",
+      "poolId": "0xe6f5bc747a27690cfc4c60dc926ea0d6c8e626a8b3a3fab716c098443d12734c",
+      "block": 78681841,
+      "gasUsed": 293442,
+      "effectiveGasPriceWei": 30932000,
+      "ethFee": 9.076747944e-06
+    },
+    {
+      "kind": "later_add",
+      "tx": "0x0b8514c96023d2110c9fac1b81672ced6a8dd0230bf60b3c266026e089c80fd9",
+      "poolId": "0xf7c22ec406cf499423b6e65ae90993ec062518f076cc644a7beb206a54949ada",
+      "block": 78825939,
+      "gasUsed": 182979,
+      "effectiveGasPriceWei": 28882000,
+      "ethFee": 5.284799478e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x2f0d8859b68c4010374d7ee275c8516d669be540053c144a17c18586778de0c1",
+      "poolId": "0x47b39c937db13f212494361e8d4d8529cfe7132f171e36000cdae2b145e13777",
+      "block": 77955656,
+      "gasUsed": 112300,
+      "effectiveGasPriceWei": 34800000,
+      "ethFee": 3.90804e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x1fa9472759452ed3f498e175441e055735e2ae7edb75a08de49c77f5c1522173",
+      "poolId": "0xced29f2cb8db7d94a355460ca4a837b0b5016335d2a6bb83a624f4a04388b2d3",
+      "block": 78047352,
+      "gasUsed": 152595,
+      "effectiveGasPriceWei": 33838000,
+      "ethFee": 5.16350961e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x826be29fab9fb19704db6d0cd1428b73d58ab0a993854ca938131331ca7a6459",
+      "poolId": "0xb145832f413166d7e458c0a4b056c2345f0890b638da226100bc147ed2a8acec",
+      "block": 78086367,
+      "gasUsed": 116698,
+      "effectiveGasPriceWei": 33036000,
+      "ethFee": 3.855235128e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x078e2bf3b187151d12509d98c6b6936b8baf46c2a17e18fe5a8fe9556f52fc2f",
+      "poolId": "0x3243cd51d79ed57b8b4dbb8975200d88c9052f3dc51338608870e66ee24203d9",
+      "block": 78322459,
+      "gasUsed": 147854,
+      "effectiveGasPriceWei": 32260000,
+      "ethFee": 4.76977004e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x0dae211c68b9db512647a368fb77fbdc470f4fdf2465a70355109975a755ce17",
+      "poolId": "0xf987000ff1a8335babdffba6cc7d31fe19852620bbf5f950f8bbc14b725ede9f",
+      "block": 78494310,
+      "gasUsed": 167375,
+      "effectiveGasPriceWei": 32364000,
+      "ethFee": 5.4169245e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x7fca4c40707bb13f763a7aa3cabae6c3aba358bc0c63ff28811e59de2e470824",
+      "poolId": "0x42b022a4bc56c2caecce462fb387dc5d5e4f432ebf7fc3d583ea2b52ac8305c9",
+      "block": 78585916,
+      "gasUsed": 151788,
+      "effectiveGasPriceWei": 31408000,
+      "ethFee": 4.767357504e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0xb3470c6ca4ecefccd7d1befbcd499c64f31f688e9e8edcab6cfdb07e779a8008",
+      "poolId": "0xd6b8458c68f57f779835591c64761c9c7547fa9fbee4b83d39388a6f871d87c8",
+      "block": 78617385,
+      "gasUsed": 128844,
+      "effectiveGasPriceWei": 32000000,
+      "ethFee": 4.123008e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x1535572ddb29dd4513d41c3328ecc980ec792e97945691218274264d538f54ab",
+      "poolId": "0x2f1cf08defea9c06ea63f11aef96a6c62230e1945eeaae46cc75951737d47461",
+      "block": 78634404,
+      "gasUsed": 114177,
+      "effectiveGasPriceWei": 31600000,
+      "ethFee": 3.6079932e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x8065ed8fea263a4e4a9f83791789b90d16a1cf9b5f822e9e24f8ee21cf609fee",
+      "poolId": "0xf3560e6a648b45b60b408852248529a641115e8142fb72bfe21e953044e40cac",
+      "block": 78677886,
+      "gasUsed": 169934,
+      "effectiveGasPriceWei": 30910000,
+      "ethFee": 5.25265994e-06
+    },
+    {
+      "kind": "remove",
+      "tx": "0x5c2c084857ad0fe1d94ac25316cb7026f8cb849294a0da2d5615a44af2b9e7fc",
+      "poolId": "0xd9354fcf79e856ecaed015fba02ace39efb9e50b3ca439f2ef96f14512a9f969",
+      "block": 78828391,
+      "gasUsed": 155478,
+      "effectiveGasPriceWei": 28840000,
+      "ethFee": 4.48398552e-06
+    }
+  ]
+}
