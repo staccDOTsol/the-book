@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 1,
+  "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+  "chainId": 4663,
+  "source": "Robinhood PoolManager Initialize/ModifyLiquidity/Swap logs plus Fomo Mobula historical regular trade records; #2 event/print signs cross-checked by fomo_recon",
+  "priceRule": "First found regular >=$4 third-party token-buy print after >=5s at entry and token-sell print after >=5s at LP exit; each selected tx block strictly follows event block and v4 Swap signs independently verify token direction. Vendor buy/sell labels ignored. Mobula millisecond timestamps are not reliable intra-second chain ordering.",
+  "observedCost": {
+    "actualRoundTripBuyUsdc": 4.0,
+    "actualRoundTripSellUsdc": 3.500279,
+    "cashRetentionFactor": "0.87506975",
+    "platformFeeBuyUsdc": 0.018,
+    "platformFeeSellUsdc": 0.070122,
+    "routePlusMarketDifferenceUsdc": 0.411599,
+    "costSensitivityMeaning": "Hypothetical price ratio times this single realized cash retention factor; not an executable historical net return"
+  },
+  "limitations": [
+    "The #2 high-fee side pool had only 0.021960 USDG deposited at birth and charged 98.9999% fee; replay market prints came from the separate zero-fee base pool.",
+    "No historical Fomo/Relay $4 route quotes or fills at these signals; third-party trade prices reflect other sizes and routes.",
+    "Only one observed $4 LAUNCH round trip hours later; future fees/slippage/impact vary.",
+    "The 75% LP exit tracks frozen pool liquidity units, not token sellability or owner identity.",
+    "LAUNCH was selected after observing its outcome; this replay does not estimate strategy expected profit or cadence."
+  ],
+  "replays": [
+    {
+      "poolBirthCount": 2,
+      "rule": "first-high-fee-pool-birth",
+      "signal": {
+        "time": "2026-10-03T01:32:00Z",
+        "block": 78697912,
+        "tx": "https://robinhoodchain.blockscout.com/tx/0x3b72adcac50be8f4de4b951e62867d92eef3c4d6c8f49f582688d51d552985e6"
+      },
+      "entryPrint": {
+        "time": "2026-10-03T01:32:08.005Z",
+        "latencyAfterSignalSeconds": 8.005,
+        "priceUsd": 0.00011285440542481094,
+        "tradeUsd": 572.2287740368539,
+        "tx": "0xce0dc28b98ecc77bc493c2d7909f3a32f0373f5781a02fa4cc7c5141986e1d8e",
+        "block": 78697995,
+        "txIndex": 5,
+        "tokenDirectionOnchainVerified": true
+      },
+      "exitAt75PercentRemaining": {
+        "time": "2026-10-03T01:37:22Z",
+        "block": 78701103,
+        "remainingFraction": 0.15956,
+        "print": {
+          "time": "2026-10-03T01:37:27.002Z",
+          "latencyAfterSignalSeconds": 5.002,
+          "priceUsd": 0.0002901656478849601,
+          "tradeUsd": 497.8702541502337,
+          "tx": "0x9a9a7b659bbaaca1aad8a8071f9f43ebf8e7c407ac968db04a22b60b676c7f92",
+          "block": 78701152,
+          "txIndex": 2,
+          "tokenDirectionOnchainVerified": true
+        }
+      },
+      "thresholdExits": {
+        "0.95": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.90": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.85": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.80": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.75": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.70": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.60": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        },
+        "0.50": {
+          "time": "2026-10-03T01:37:22Z",
+          "block": 78701103,
+          "remainingFraction": 0.15956
+        }
+      },
+      "grossMarketPrintReturnPct": 157.115,
+      "oneObservedRoundTripCostSensitivityPct": 124.9936,
+      "oneObservedRoundTripCostSensitivityUsdOn4": 4.999744
+    },
+    {
+      "poolBirthCount": 3,
+      "rule": "3/300",
+      "signal": {
+        "time": "2026-10-03T01:33:08Z",
+        "block": 78698587,
+        "tx": "https://robinhoodchain.blockscout.com/tx/0xdc7a13857a5f01a5ed4fed13328d410bfb5bebfb960d6c7f2ba75f2f64b9a16b"
+      },
+      "entryPrint": {
+        "time": "2026-10-03T01:33:14.002Z",
+        "latencyAfterSignalSeconds": 6.002,
+        "priceUsd": 0.00014718098245951927,
+        "tradeUsd": 72.15145979731241,
+        "tx": "0x6bf957804c21359007becbc8f2c3574315ba1891cd25ba8a3caf9d406ac73191",
+        "block": 78698644,
+        "txIndex": 2,
+        "tokenDirectionOnchainVerified": true
+      },
+      "exitAt75PercentRemaining": {
+        "time": "2026-10-03T01:34:51Z",
+        "block": 78699614,
+        "remainingFraction": 0.53082738,
+        "print": {
+          "time": "2026-10-03T01:34:56.005Z",
+          "latencyAfterSignalSeconds": 5.005,
+          "priceUsd": 0.000251798948175362,
+          "tradeUsd": 44.14843988423809,
+          "tx": "0x5e0e628dfdfae790ad7b82b261f4aa9e54b7c8cdfb9846030d5e314a7134eb49",
+          "block": 78699666,
+          "txIndex": 5,
+          "tokenDirectionOnchainVerified": true
+        }
+      },
+      "thresholdExits": {
+        "0.95": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.90": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.85": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.80": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.75": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.70": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.60": {
+          "time": "2026-10-03T01:34:51Z",
+          "block": 78699614,
+          "remainingFraction": 0.53082738
+        },
+        "0.50": {
+          "time": "2026-10-03T01:35:45Z",
+          "block": 78700153,
+          "remainingFraction": 0.06165477
+        }
+      },
+      "grossMarketPrintReturnPct": 71.0812,
+      "oneObservedRoundTripCostSensitivityPct": 49.708,
+      "oneObservedRoundTripCostSensitivityUsdOn4": 1.988318
+    },
+    {
+      "poolBirthCount": 4,
+      "rule": "4/300",
+      "signal": {
+        "time": "2026-10-03T01:33:28Z",
+        "block": 78698787,
+        "tx": "https://robinhoodchain.blockscout.com/tx/0xc1176cc57c0edd1799f7eb54761353a4188fe22ee02b1e4ffe0d0e15062ee277"
+      },
+      "entryPrint": {
+        "time": "2026-10-03T01:33:33.003Z",
+        "latencyAfterSignalSeconds": 5.003,
+        "priceUsd": 0.00029915727588678475,
+        "tradeUsd": 12.96951523919847,
+        "tx": "0x0fdf1475c06cc3b854a89f9add0788c1f06289c6936edf2d70fd994c86f2167d",
+        "block": 78698854,
+        "txIndex": 3,
+        "tokenDirectionOnchainVerified": true
+      },
+      "exitAt75PercentRemaining": {
+        "time": "2026-10-03T01:40:41Z",
+        "block": 78703100,
+        "remainingFraction": 9.88e-06,
+        "print": {
+          "time": "2026-10-03T01:40:54.009Z",
+          "latencyAfterSignalSeconds": 13.009,
+          "priceUsd": 0.0002772313484472767,
+          "tradeUsd": 4.8842296345269505,
+          "tx": "0x2f33e6a75946e55f6061a9a6a9ef86197257d26fd14c943d55c7a727f2bc1ebd",
+          "block": 78703220,
+          "txIndex": 9,
+          "tokenDirectionOnchainVerified": true
+        }
+      },
+      "thresholdExits": {
+        "0.95": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.90": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.85": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.80": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.75": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.70": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.60": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        },
+        "0.50": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 9.88e-06
+        }
+      },
+      "grossMarketPrintReturnPct": -7.3292,
+      "oneObservedRoundTripCostSensitivityPct": -18.9066,
+      "oneObservedRoundTripCostSensitivityUsdOn4": -0.756265
+    },
+    {
+      "poolBirthCount": 5,
+      "rule": "5/600",
+      "signal": {
+        "time": "2026-10-03T01:34:38Z",
+        "block": 78699494,
+        "tx": "https://robinhoodchain.blockscout.com/tx/0x14dd140b7135abf1fa3b88446ea2885a3dc62f41a7560e0efc33d216c762adb1"
+      },
+      "entryPrint": {
+        "time": "2026-10-03T01:34:43.007Z",
+        "latencyAfterSignalSeconds": 5.007,
+        "priceUsd": 0.0002874772940776165,
+        "tradeUsd": 2276.345921505643,
+        "tx": "0x7528d0c57d62c3202fdddd0c0288ca602c3bbc4912d3cd966ac03b67345214f0",
+        "block": 78699538,
+        "txIndex": 7,
+        "tokenDirectionOnchainVerified": true
+      },
+      "exitAt75PercentRemaining": {
+        "time": "2026-10-03T01:40:41Z",
+        "block": 78703100,
+        "remainingFraction": 0.00033602,
+        "print": {
+          "time": "2026-10-03T01:40:54.009Z",
+          "latencyAfterSignalSeconds": 13.009,
+          "priceUsd": 0.0002772313484472767,
+          "tradeUsd": 4.8842296345269505,
+          "tx": "0x2f33e6a75946e55f6061a9a6a9ef86197257d26fd14c943d55c7a727f2bc1ebd",
+          "block": 78703220,
+          "txIndex": 9,
+          "tokenDirectionOnchainVerified": true
+        }
+      },
+      "thresholdExits": {
+        "0.95": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.90": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.85": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.80": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.75": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.70": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.60": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        },
+        "0.50": {
+          "time": "2026-10-03T01:40:41Z",
+          "block": 78703100,
+          "remainingFraction": 0.00033602
+        }
+      },
+      "grossMarketPrintReturnPct": -3.5641,
+      "oneObservedRoundTripCostSensitivityPct": -15.6119,
+      "oneObservedRoundTripCostSensitivityUsdOn4": -0.624474
+    }
+  ],
+  "rows": [
+    {
+      "poolNumber": 2,
+      "entryTimestamp": "2026-10-03T01:32:00Z",
+      "exitTimestamp": "2026-10-03T01:37:22Z",
+      "entryPriceUsd": 0.00011285440542481094,
+      "exitPriceUsd": 0.0002901656478849601,
+      "entryTradeTimestampMs": 1790991128005,
+      "exitTradeTimestampMs": 1790991447002,
+      "entryTx": "0xce0dc28b98ecc77bc493c2d7909f3a32f0373f5781a02fa4cc7c5141986e1d8e",
+      "exitTx": "0x9a9a7b659bbaaca1aad8a8071f9f43ebf8e7c407ac968db04a22b60b676c7f92",
+      "entryBlock": 78697995,
+      "exitBlock": 78701152,
+      "entryTradeUsd": 572.2287740368539,
+      "exitTradeUsd": 497.8702541502337,
+      "grossReturnPct": 157.115,
+      "observedCostFactorSensitivityPct": 124.9936,
+      "liquidityRemainingFraction": 0.15956
+    },
+    {
+      "poolNumber": 3,
+      "entryTimestamp": "2026-10-03T01:33:08Z",
+      "exitTimestamp": "2026-10-03T01:34:51Z",
+      "entryPriceUsd": 0.00014718098245951927,
+      "exitPriceUsd": 0.000251798948175362,
+      "entryTradeTimestampMs": 1790991194002,
+      "exitTradeTimestampMs": 1790991296005,
+      "entryTx": "0x6bf957804c21359007becbc8f2c3574315ba1891cd25ba8a3caf9d406ac73191",
+      "exitTx": "0x5e0e628dfdfae790ad7b82b261f4aa9e54b7c8cdfb9846030d5e314a7134eb49",
+      "entryBlock": 78698644,
+      "exitBlock": 78699666,
+      "entryTradeUsd": 72.15145979731241,
+      "exitTradeUsd": 44.14843988423809,
+      "grossReturnPct": 71.0812,
+      "observedCostFactorSensitivityPct": 49.708,
+      "liquidityRemainingFraction": 0.53082738
+    },
+    {
+      "poolNumber": 4,
+      "entryTimestamp": "2026-10-03T01:33:28Z",
+      "exitTimestamp": "2026-10-03T01:40:41Z",
+      "entryPriceUsd": 0.00029915727588678475,
+      "exitPriceUsd": 0.0002772313484472767,
+      "entryTradeTimestampMs": 1790991213003,
+      "exitTradeTimestampMs": 1790991654009,
+      "entryTx": "0x0fdf1475c06cc3b854a89f9add0788c1f06289c6936edf2d70fd994c86f2167d",
+      "exitTx": "0x2f33e6a75946e55f6061a9a6a9ef86197257d26fd14c943d55c7a727f2bc1ebd",
+      "entryBlock": 78698854,
+      "exitBlock": 78703220,
+      "entryTradeUsd": 12.96951523919847,
+      "exitTradeUsd": 4.8842296345269505,
+      "grossReturnPct": -7.3292,
+      "observedCostFactorSensitivityPct": -18.9066,
+      "liquidityRemainingFraction": 9.88e-06
+    },
+    {
+      "poolNumber": 5,
+      "entryTimestamp": "2026-10-03T01:34:38Z",
+      "exitTimestamp": "2026-10-03T01:40:41Z",
+      "entryPriceUsd": 0.0002874772940776165,
+      "exitPriceUsd": 0.0002772313484472767,
+      "entryTradeTimestampMs": 1790991283007,
+      "exitTradeTimestampMs": 1790991654009,
+      "entryTx": "0x7528d0c57d62c3202fdddd0c0288ca602c3bbc4912d3cd966ac03b67345214f0",
+      "exitTx": "0x2f33e6a75946e55f6061a9a6a9ef86197257d26fd14c943d55c7a727f2bc1ebd",
+      "entryBlock": 78699538,
+      "exitBlock": 78703220,
+      "entryTradeUsd": 2276.345921505643,
+      "exitTradeUsd": 4.8842296345269505,
+      "grossReturnPct": -3.5641,
+      "observedCostFactorSensitivityPct": -15.6119,
+      "liquidityRemainingFraction": 0.00033602
+    }
+  ],
+  "pool2BirthLiquidity": {
+    "poolId": "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+    "feePips": 989999,
+    "feeFraction": 0.989999,
+    "birthBlock": 78697912,
+    "birthTx": "0x3b72adcac50be8f4de4b951e62867d92eef3c4d6c8f49f582688d51d552985e6",
+    "depositedUsdgRaw": "21960",
+    "usdgDecimals": 6,
+    "depositedUsdg": "0.021960",
+    "depositedLaunch": "4391.624154699475668250",
+    "interpretation": "Pool #2 high-fee signal was seeded with dust USDG. Historical price prints in this replay are from the separate zero-fee base pool; this signal alone does not establish economically meaningful independent liquidity."
+  }
+}

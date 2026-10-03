@@ -1,0 +1,115 @@
+{
+  "source": "Robinhood eth_getTransactionByHash / eth_getTransactionReceipt for LAUNCH v4 Initialize txs",
+  "decimals": {
+    "USDG": 6,
+    "LAUNCH": 18
+  },
+  "caveat": "Native tx.value may be partially refunded or used for settlement; market-print valuation occurs after signal and is not executable route capacity. USDG+token deposits may lie outside active tick range.",
+  "pools": [
+    {
+      "poolNumber": 2,
+      "feePips": 989999,
+      "initializeTx": "0x3b72adcac50be8f4de4b951e62867d92eef3c4d6c8f49f582688d51d552985e6",
+      "block": 78697912,
+      "nativeTxValueWei": "0",
+      "usdGDeposited": "0.02196",
+      "launchDeposited": "4391.62415469947566825",
+      "firstLaterVerifiedTokenBuyPrintUsd": "0.00011285440542481094",
+      "usdGPlusLaunchAtLaterPrintUsd": "0.5175741328278472656369208174",
+      "twoSidedPoolRatioNominalUsd": "0.04392",
+      "transfersToPoolManager": [
+        {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "from": "0xf159c761570de2558b63f4ed3c8d50e97ffd07d0",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "21960",
+          "logIndex": 4
+        },
+        {
+          "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+          "from": "0xf159c761570de2558b63f4ed3c8d50e97ffd07d0",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "4391624154699475668250",
+          "logIndex": 5
+        }
+      ]
+    },
+    {
+      "poolNumber": 3,
+      "feePips": 870000,
+      "initializeTx": "0xdc7a13857a5f01a5ed4fed13328d410bfb5bebfb960d6c7f2ba75f2f64b9a16b",
+      "block": 78698587,
+      "nativeTxValueWei": "0",
+      "usdGDeposited": "9.506701",
+      "launchDeposited": "92294.07680652025687835",
+      "firstLaterVerifiedTokenBuyPrintUsd": "0.00014718098245951927",
+      "usdGPlusLaunchAtLaterPrintUsd": "23.09063389957798220970392722",
+      "twoSidedPoolRatioNominalUsd": "19.013402",
+      "transfersToPoolManager": [
+        {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "from": "0x743508ffae72e5711c1f9d9765ca32794b6e43b9",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "9506701",
+          "logIndex": 18
+        },
+        {
+          "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+          "from": "0x743508ffae72e5711c1f9d9765ca32794b6e43b9",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "92294076806520256878350",
+          "logIndex": 19
+        }
+      ]
+    },
+    {
+      "poolNumber": 4,
+      "feePips": 810000,
+      "initializeTx": "0xc1176cc57c0edd1799f7eb54761353a4188fe22ee02b1e4ffe0d0e15062ee277",
+      "block": 78698787,
+      "nativeTxValueWei": "199322676546783",
+      "usdGDeposited": "0",
+      "launchDeposited": "4943.916243640382375402",
+      "firstLaterVerifiedTokenBuyPrintUsd": "0.00029915727588678475",
+      "usdGPlusLaunchAtLaterPrintUsd": "1.479008515659882401520864924",
+      "twoSidedPoolRatioNominalUsd": null,
+      "transfersToPoolManager": [
+        {
+          "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+          "from": "0x742618ebc515bfe289386175589aa196c0d5b07f",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "4943916243640382375402",
+          "logIndex": 54
+        }
+      ]
+    },
+    {
+      "poolNumber": 5,
+      "feePips": 890000,
+      "initializeTx": "0x14dd140b7135abf1fa3b88446ea2885a3dc62f41a7560e0efc33d216c762adb1",
+      "block": 78699494,
+      "nativeTxValueWei": "0",
+      "usdGDeposited": "5.725657",
+      "launchDeposited": "18351.214576835146692613",
+      "firstLaterVerifiedTokenBuyPrintUsd": "0.0002874772940776165",
+      "usdGPlusLaunchAtLaterPrintUsd": "11.00121450958628010148836019",
+      "twoSidedPoolRatioNominalUsd": "11.451314",
+      "transfersToPoolManager": [
+        {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "from": "0xf15fc62931408cca1c0e84979d2a91d3af8e86b1",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "5725657",
+          "logIndex": 10
+        },
+        {
+          "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+          "from": "0xf15fc62931408cca1c0e84979d2a91d3af8e86b1",
+          "to": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+          "rawAmount": "18351214576835146692613",
+          "logIndex": 11
+        }
+      ]
+    }
+  ]
+}

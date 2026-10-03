@@ -1,0 +1,1507 @@
+{
+  "schemaVersion": 1,
+  "token": "0x6c7c3113bfa9eef3e716a4912d9b0dc47aefe796",
+  "chainId": 4663,
+  "fromBlock": 77940490,
+  "toBlock": 78796050,
+  "remainingThresholds": [
+    "0.95",
+    "0.90",
+    "0.85",
+    "0.80",
+    "0.75",
+    "0.70",
+    "0.60",
+    "0.50"
+  ],
+  "scope": "LAUNCH-only completed-block entry and frozen entry-known LP pool exits; no prices, wallet control, or executable trade claim",
+  "notes": [
+    "1/first-high-fee has no time window and begins at LAUNCH pool #2, not zero-fee pool #1.",
+    "2/60 starts at pools #3+#4; 2/120 through 2/600 start at pools #1+#2 and exclude zero-fee #1 from exit LP.",
+    "For n>=3, funded candidates and exits are copied from the read-only 24h chain matrix for the same block range."
+  ],
+  "rules": {
+    "1/first-high-fee": {
+      "rule": "1/first-high-fee",
+      "entryBlock": 78697912,
+      "entryTimestamp": 1790991120,
+      "entryTime": "2026-10-03T01:32:00Z",
+      "signalPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "signalPoolFeesPips": [
+        989999
+      ],
+      "positiveNetLiquidityAtSignal": "9820390340530",
+      "conditions": "static fee >=700000 and <1000000; positive net high-fee LP after entry block; one-sided pool identity unverified",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.90": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.85": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.80": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.75": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.70": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.60": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.50": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        }
+      }
+    },
+    "2/60": {
+      "rule": "2/60",
+      "entryBlock": 78698787,
+      "entryTimestamp": 1790991208,
+      "entryTime": "2026-10-03T01:33:28Z",
+      "signalPoolIds": [
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "frozenExitPoolIds": [
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "signalPoolFeesPips": [
+        870000,
+        810000
+      ],
+      "positiveNetLiquidityAtSignal": "993503188688244694",
+      "conditions": "static fee >=700000 and <1000000; positive net high-fee LP after entry block; one-sided pool identity unverified",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.90": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.85": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.80": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.75": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.70": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.60": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        },
+        "0.50": {
+          "block": 78703100,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z",
+          "currentOutstanding": "0",
+          "peakOutstanding": "993503188688244694",
+          "remainingFraction": 0.0
+        }
+      }
+    },
+    "2/120": {
+      "rule": "2/120",
+      "entryBlock": 78697912,
+      "entryTimestamp": 1790991120,
+      "entryTime": "2026-10-03T01:32:00Z",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "signalPoolFeesPips": [
+        0,
+        989999
+      ],
+      "positiveNetLiquidityAtSignal": "9820390340530",
+      "conditions": "static fee >=700000 and <1000000; positive net high-fee LP after entry block; one-sided pool identity unverified",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.90": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.85": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.80": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.75": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.70": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.60": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.50": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        }
+      }
+    },
+    "2/180": {
+      "rule": "2/180",
+      "entryBlock": 78697912,
+      "entryTimestamp": 1790991120,
+      "entryTime": "2026-10-03T01:32:00Z",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "signalPoolFeesPips": [
+        0,
+        989999
+      ],
+      "positiveNetLiquidityAtSignal": "9820390340530",
+      "conditions": "static fee >=700000 and <1000000; positive net high-fee LP after entry block; one-sided pool identity unverified",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.90": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.85": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.80": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.75": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.70": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.60": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.50": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        }
+      }
+    },
+    "2/300": {
+      "rule": "2/300",
+      "entryBlock": 78697912,
+      "entryTimestamp": 1790991120,
+      "entryTime": "2026-10-03T01:32:00Z",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "signalPoolFeesPips": [
+        0,
+        989999
+      ],
+      "positiveNetLiquidityAtSignal": "9820390340530",
+      "conditions": "static fee >=700000 and <1000000; positive net high-fee LP after entry block; one-sided pool identity unverified",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.90": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.85": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.80": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.75": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.70": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.60": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.50": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        }
+      }
+    },
+    "2/600": {
+      "rule": "2/600",
+      "entryBlock": 78697912,
+      "entryTimestamp": 1790991120,
+      "entryTime": "2026-10-03T01:32:00Z",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e"
+      ],
+      "signalPoolFeesPips": [
+        0,
+        989999
+      ],
+      "positiveNetLiquidityAtSignal": "9820390340530",
+      "conditions": "static fee >=700000 and <1000000; positive net high-fee LP after entry block; one-sided pool identity unverified",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.90": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.85": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.80": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.75": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.70": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.60": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        },
+        "0.50": {
+          "block": 78701103,
+          "timestamp": 1790991442,
+          "time": "2026-10-03T01:37:22Z",
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "61546852488029",
+          "remainingFraction": 0.15955959
+        }
+      }
+    },
+    "3/60": null,
+    "3/120": {
+      "rule": "3/120",
+      "entryBlock": 78698787,
+      "entryTimestamp": 1790991208,
+      "entryTime": "2026-10-03T01:33:28Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xc1176cc57c0edd1799f7eb54761353a4188fe22ee02b1e4ffe0d0e15062ee277",
+      "signalPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "highFeePoolCount": 3,
+      "positiveNetHighFeePoolCount": 3,
+      "positiveNetLiquidityAtSignal": "993513009078585224",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "3/180": {
+      "rule": "3/180",
+      "entryBlock": 78698587,
+      "entryTimestamp": 1790991188,
+      "entryTime": "2026-10-03T01:33:08Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xdc7a13857a5f01a5ed4fed13328d410bfb5bebfb960d6c7f2ba75f2f64b9a16b",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049"
+      ],
+      "highFeePoolCount": 2,
+      "positiveNetHighFeePoolCount": 2,
+      "positiveNetLiquidityAtSignal": "946523220632943",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.90": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.85": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.80": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.75": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.70": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.60": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.50": {
+          "block": 78700153,
+          "currentOutstanding": "61546852488029",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.06165477,
+          "timestamp": 1790991345,
+          "time": "2026-10-03T01:35:45Z"
+        }
+      }
+    },
+    "3/300": {
+      "rule": "3/300",
+      "entryBlock": 78698587,
+      "entryTimestamp": 1790991188,
+      "entryTime": "2026-10-03T01:33:08Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xdc7a13857a5f01a5ed4fed13328d410bfb5bebfb960d6c7f2ba75f2f64b9a16b",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049"
+      ],
+      "highFeePoolCount": 2,
+      "positiveNetHighFeePoolCount": 2,
+      "positiveNetLiquidityAtSignal": "946523220632943",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.90": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.85": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.80": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.75": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.70": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.60": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.50": {
+          "block": 78700153,
+          "currentOutstanding": "61546852488029",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.06165477,
+          "timestamp": 1790991345,
+          "time": "2026-10-03T01:35:45Z"
+        }
+      }
+    },
+    "3/600": {
+      "rule": "3/600",
+      "entryBlock": 78698587,
+      "entryTimestamp": 1790991188,
+      "entryTime": "2026-10-03T01:33:08Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xdc7a13857a5f01a5ed4fed13328d410bfb5bebfb960d6c7f2ba75f2f64b9a16b",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049"
+      ],
+      "highFeePoolCount": 2,
+      "positiveNetHighFeePoolCount": 2,
+      "positiveNetLiquidityAtSignal": "946523220632943",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.90": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.85": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.80": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.75": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.70": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.60": {
+          "block": 78699614,
+          "currentOutstanding": "529898267634236",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.53082738,
+          "timestamp": 1790991291,
+          "time": "2026-10-03T01:34:51Z"
+        },
+        "0.50": {
+          "block": 78700153,
+          "currentOutstanding": "61546852488029",
+          "peakOutstanding": "998249682780442",
+          "remainingFraction": 0.06165477,
+          "timestamp": 1790991345,
+          "time": "2026-10-03T01:35:45Z"
+        }
+      }
+    },
+    "4/60": null,
+    "4/120": {
+      "rule": "4/120",
+      "entryBlock": 78699538,
+      "entryTimestamp": 1790991283,
+      "entryTime": "2026-10-03T01:34:43Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xdbbd9582abfbc9af1d7cff599d9db82debb1bc0f649efa79d526b927d640e936",
+      "signalPoolIds": [
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b",
+        "0xd16f1c4bf194b276f3f8315e04163b3d6d12babbd7b094cf70bbefea0f6e98bc"
+      ],
+      "frozenExitPoolIds": [
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b",
+        "0xd16f1c4bf194b276f3f8315e04163b3d6d12babbd7b094cf70bbefea0f6e98bc"
+      ],
+      "highFeePoolCount": 3,
+      "positiveNetHighFeePoolCount": 3,
+      "positiveNetLiquidityAtSignal": "993990645744807477",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "487457056562783",
+          "peakOutstanding": "993990645744807477",
+          "remainingFraction": 0.0004904,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "4/180": {
+      "rule": "4/180",
+      "entryBlock": 78698787,
+      "entryTimestamp": 1790991208,
+      "entryTime": "2026-10-03T01:33:28Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xc1176cc57c0edd1799f7eb54761353a4188fe22ee02b1e4ffe0d0e15062ee277",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "highFeePoolCount": 3,
+      "positiveNetHighFeePoolCount": 3,
+      "positiveNetLiquidityAtSignal": "993513009078585224",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "4/300": {
+      "rule": "4/300",
+      "entryBlock": 78698787,
+      "entryTimestamp": 1790991208,
+      "entryTime": "2026-10-03T01:33:28Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xc1176cc57c0edd1799f7eb54761353a4188fe22ee02b1e4ffe0d0e15062ee277",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "highFeePoolCount": 3,
+      "positiveNetHighFeePoolCount": 3,
+      "positiveNetLiquidityAtSignal": "993513009078585224",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "4/600": {
+      "rule": "4/600",
+      "entryBlock": 78698787,
+      "entryTimestamp": 1790991208,
+      "entryTime": "2026-10-03T01:33:28Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xc1176cc57c0edd1799f7eb54761353a4188fe22ee02b1e4ffe0d0e15062ee277",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583"
+      ],
+      "highFeePoolCount": 3,
+      "positiveNetHighFeePoolCount": 3,
+      "positiveNetLiquidityAtSignal": "993513009078585224",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "9820390340530",
+          "peakOutstanding": "993564735540732723",
+          "remainingFraction": 9.88e-06,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "5/60": null,
+    "5/120": null,
+    "5/180": {
+      "rule": "5/180",
+      "entryBlock": 78699538,
+      "entryTimestamp": 1790991283,
+      "entryTime": "2026-10-03T01:34:43Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0xdbbd9582abfbc9af1d7cff599d9db82debb1bc0f649efa79d526b927d640e936",
+      "signalPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b",
+        "0xd16f1c4bf194b276f3f8315e04163b3d6d12babbd7b094cf70bbefea0f6e98bc"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b",
+        "0xd16f1c4bf194b276f3f8315e04163b3d6d12babbd7b094cf70bbefea0f6e98bc"
+      ],
+      "highFeePoolCount": 4,
+      "positiveNetHighFeePoolCount": 4,
+      "positiveNetLiquidityAtSignal": "994052192597295506",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "497277446903313",
+          "peakOutstanding": "994052192597295506",
+          "remainingFraction": 0.00050025,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "5/300": {
+      "rule": "5/300",
+      "entryBlock": 78699494,
+      "entryTimestamp": 1790991278,
+      "entryTime": "2026-10-03T01:34:38Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0x14dd140b7135abf1fa3b88446ea2885a3dc62f41a7560e0efc33d216c762adb1",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b"
+      ],
+      "highFeePoolCount": 4,
+      "positiveNetHighFeePoolCount": 4,
+      "positiveNetLiquidityAtSignal": "993888884827637379",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    },
+    "5/600": {
+      "rule": "5/600",
+      "entryBlock": 78699494,
+      "entryTimestamp": 1790991278,
+      "entryTime": "2026-10-03T01:34:38Z",
+      "entryTx": "https://robinhoodchain.blockscout.com/tx/0x14dd140b7135abf1fa3b88446ea2885a3dc62f41a7560e0efc33d216c762adb1",
+      "signalPoolIds": [
+        "0x5c9b2c7f82c9f8693d1b7f6972cb9deaf823949a1106694df08e1839d62ed5e6",
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b"
+      ],
+      "frozenExitPoolIds": [
+        "0xbae90bf0271cd9e1a74b5b9c2bf3ad02bd24da60abf9c5b016ebc079a6aa5b2e",
+        "0x46f9254ead25faef32d53158b9a4a4e1ab3a286504e428e5fbc6abd68eade049",
+        "0xb5f212fc574066701412f473777bf1bd947748c4a988973f5d6d14dc75d39583",
+        "0xb1eaeb6974cee0f01d5b8df747ab7b8ebe34d871fbe7dc0e4e8b5aa8332e8d5b"
+      ],
+      "highFeePoolCount": 4,
+      "positiveNetHighFeePoolCount": 4,
+      "positiveNetLiquidityAtSignal": "993888884827637379",
+      "conditions": "one static fee 700000..999999 pips; dynamic fee sentinel excluded; positive net high-fee pool and secondary-pool LP at completed entry block",
+      "exitsByRemaining": {
+        "0.95": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.90": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.85": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.80": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.75": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.70": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.60": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        },
+        "0.50": {
+          "block": 78703100,
+          "currentOutstanding": "333969677245186",
+          "peakOutstanding": "993888884827637379",
+          "remainingFraction": 0.00033602,
+          "timestamp": 1790991641,
+          "time": "2026-10-03T01:40:41Z"
+        }
+      }
+    }
+  }
+}

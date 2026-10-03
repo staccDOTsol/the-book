@@ -1,2 +1,9 @@
 forensics/book/wallets/
 node_modules/
+__pycache__/
+*.pyc
+forensics/cranker_activity.json
+forensics/cranker_activity.json.lock
+.local/
+.venv/
+.cache/
