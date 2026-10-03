@@ -36,6 +36,8 @@ The local live writer was stopped before the Fly cutover. The Fly volume receive
 
 At 19:01 UTC the watcher hit its original **0.01 ETH** owner balance floor while the owner held about **0.00658 ETH**. The Fly supervisor retried the watcher. The floor was lowered to **0.001 ETH** in the trader-paid runtime and redeployed successfully; a fresh watcher cycle enqueued more launches. The other gas budget limits were unchanged.
 
+At 19:14 UTC a separate owner-account transaction consumed nonce **56259** before the watcher's saved enqueue could mine. The saved enqueue had no receipt and its token remained unqueued. The watcher now checks the owner nonce and token stage at the same confirmed block before discarding that stale signed transaction; it replays the unchanged launch cursor with a fresh nonce. This recovery was deployed at 19:19 UTC, logged `pending_nonce_recovered`, and the missed token advanced to `Queued`. At 19:19:49 UTC the Fly watcher and worker loops were running with zero consecutive failures; Q had **20 pending entries** and **0 successful executor steps**. Shared owner-account activity can cause further nonce collisions, so watch for repeated recovery events.
+
 ## Superseded deployments
 
 `0x0E34d0792032Ffc54C058751cF048dA347193472` is the earlier Q deployment. It has its own launch history and is **not** the corrected trader-paid Q. `0xa4054a5bfd747fcdac0aecb1380c4edbfccc912b` is a subsequently deployed, **unlaunched** replacement with 1 billion tokens still in the owner wallet; it was superseded after a transfer-trigger bug was found before Pools launch. Neither address should be used for the corrected Q dashboard, keeper, or v3 pool. No holder balances were migrated or burned.

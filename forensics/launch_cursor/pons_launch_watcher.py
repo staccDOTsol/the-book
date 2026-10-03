@@ -413,10 +413,27 @@ def recover_pending(rpc: Rpc, cursor: Cursor, store: CursorStore, confirmations:
     if not confirmed:
         receipt = rpc.call("eth_getTransactionReceipt", [tx_hash])
         known = rpc.call("eth_getTransactionByHash", [tx_hash]) if receipt is None else receipt
-        if known is None:
-            confirmed_nonce = quantity(rpc.call("eth_getTransactionCount", [owner, "latest"]), "confirmed nonce")
+        if receipt is None:
+            # A replacement transaction can consume the saved nonce while the
+            # original hash never gets a receipt. Inspect one confirmed block
+            # for both the nonce and Q stage before discarding the signed raw
+            # transaction. The unchanged cursor then replays the launch; if Q
+            # already advanced, that replay skips it.
+            safe_block = max(0, chain_head(rpc) - confirmations)
+            safe_hash = block_hash(rpc, safe_block)
+            confirmed_nonce = quantity(
+                rpc.call("eth_getTransactionCount", [owner, hex(safe_block)]),
+                "confirmed nonce")
             if confirmed_nonce > nonce:
-                raise WatcherError("pending nonce was consumed without this receipt; inspect owner account")
+                current_stage = stage(rpc, cursor.q, token, safe_block)
+                if block_hash(rpc, safe_block) != safe_hash:
+                    raise WatcherError("confirmed block changed during pending nonce recovery")
+                cursor.pending = None
+                store.save(cursor)
+                print(json.dumps({"status": "pending_nonce_recovered",
+                                  "stage": current_stage}), flush=True)
+                return
+        if known is None:
             try:
                 sent = rpc.call("eth_sendRawTransaction", [pending["rawTx"]])
             except WatcherError:

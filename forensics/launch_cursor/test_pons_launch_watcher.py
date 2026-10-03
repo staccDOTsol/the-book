@@ -43,6 +43,7 @@ class MockRpc:
         self.reorg: dict[int, str] = {}
         self.known_tx = None
         self.send_hash = TX_HASH
+        self.confirmed_nonce = 0
 
     def call(self, method: str, params: list):
         self.calls.append((method, params))
@@ -66,7 +67,7 @@ class MockRpc:
             raise AssertionError(f"unexpected eth_call: {data}")
         if method == "eth_getTransactionReceipt": return self.receipt
         if method == "eth_getTransactionByHash": return self.known_tx
-        if method == "eth_getTransactionCount": return "0x0"
+        if method == "eth_getTransactionCount": return hex(self.confirmed_nonce)
         if method == "eth_estimateGas": return "0x186a0"
         if method == "eth_maxPriorityFeePerGas": return "0x1"
         if method == "eth_sendRawTransaction": return self.send_hash
@@ -262,6 +263,61 @@ class WatcherTests(unittest.TestCase):
                           "rawTx": raw[:-2] + "00"}
         with self.assertRaisesRegex(watcher.WatcherError, "hash mismatch"):
             watcher.recover_pending(rpc, cursor, store, 2, account.address.lower(), 500000, 5, 2, 1, 0.001)
+
+    def test_consumed_nonce_without_receipt_replays_from_unchanged_cursor(self):
+        from eth_account import Account
+        account = Account.from_key("0x" + "01" * 32)
+        tx = {"chainId": 0x1337, "nonce": 0, "to": Q, "value": 0, "type": 2,
+              "data": watcher.ENQUEUE + X1[2:].rjust(64, "0"), "gas": 100000,
+              "maxFeePerGas": 2, "maxPriorityFeePerGas": 1}
+        signed = account.sign_transaction(tx)
+        pending = {"token": X1, "sourceBlock": 11,
+                   "txHash": "0x" + signed.hash.hex().removeprefix("0x"), "nonce": 0,
+                   "rawTx": "0x" + signed.raw_transaction.hex().removeprefix("0x")}
+        for token_stage in (0, 1):
+            with self.subTest(stage=token_stage):
+                rpc, cursor, store = MockRpc(head=22), self.cursor(), MemoryStore()
+                rpc.confirmed_nonce = 1
+                rpc.stages[X1] = token_stage
+                cursor.pending = pending.copy()
+                watcher.recover_pending(rpc, cursor, store, 2, account.address.lower(),
+                                        500000, 5, 2, 1, 0.001)
+                self.assertIsNone(cursor.pending)
+                self.assertEqual((cursor.last_block, cursor.last_log_index), (10, None))
+                self.assertEqual(store.saved[-1]["lastBlock"], 10)
+                self.assertFalse(any(method == "eth_sendRawTransaction" for method, _ in rpc.calls))
+                self.assertIn(("eth_getTransactionCount", [account.address.lower(), "0x14"]), rpc.calls)
+                self.assertIn(("eth_call", [{"to": Q,
+                    "data": watcher.LAUNCHES + X1[2:].rjust(64, "0")}, "0x14"]), rpc.calls)
+
+    def test_consumed_nonce_reorg_keeps_pending_transaction(self):
+        from eth_account import Account
+        account = Account.from_key("0x" + "01" * 32)
+        tx = {"chainId": 0x1337, "nonce": 0, "to": Q, "value": 0, "type": 2,
+              "data": watcher.ENQUEUE + X1[2:].rjust(64, "0"), "gas": 100000,
+              "maxFeePerGas": 2, "maxPriorityFeePerGas": 1}
+        signed = account.sign_transaction(tx)
+        rpc, cursor, store = MockRpc(head=22), self.cursor(), MemoryStore()
+        rpc.confirmed_nonce = 1
+        cursor.pending = {"token": X1, "sourceBlock": 11,
+                          "txHash": "0x" + signed.hash.hex().removeprefix("0x"),
+                          "nonce": 0,
+                          "rawTx": "0x" + signed.raw_transaction.hex().removeprefix("0x")}
+        original_call = rpc.call
+        safe_hash_reads = 0
+        def call(method, params):
+            nonlocal safe_hash_reads
+            if method == "eth_getBlockByNumber" and params[0] == "0x14":
+                safe_hash_reads += 1
+                if safe_hash_reads == 2:
+                    return {"hash": "0x" + "ff" * 32}
+            return original_call(method, params)
+        rpc.call = call
+        with self.assertRaisesRegex(watcher.WatcherError, "confirmed block changed"):
+            watcher.recover_pending(rpc, cursor, store, 2, account.address.lower(),
+                                    500000, 5, 2, 1, 0.001)
+        self.assertIsNotNone(cursor.pending)
+        self.assertEqual(store.saved, [])
 
     def test_factory_event_abi_matches_filter_and_indexed_token(self):
         from eth_utils import keccak
