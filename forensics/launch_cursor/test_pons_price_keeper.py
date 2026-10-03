@@ -151,7 +151,7 @@ class KeeperTests(unittest.TestCase):
                 self.assertEqual(plan.minted_quote, expected_mints)
                 self.assertEqual(plan.max_quote_in, expected_mints)
                 self.assertEqual(sum(plan.minted_quote), 3003001 * 10**18)
-                self.assertEqual(plan.deadline, 220)
+                self.assertEqual(plan.deadline, 700)
                 self.assertEqual(len(plan.liquidity), 3)
                 for i, multiple in enumerate((1, 2, 10)):
                     lo = keeper.sqrt_at_tick(plan.tick_lower[i])
@@ -381,6 +381,7 @@ class KeeperTests(unittest.TestCase):
         signer = FakeSigner()
         with patch.object(keeper, "q_launch_state", return_value=(1, True)), \
              patch.object(keeper, "make_plan", side_effect=[first, later]), \
+             patch.object(keeper, "urgent_open_token", return_value=None), \
              patch.object(keeper, "discover_launches", return_value=0):
             a = keeper.run_cycle(rpc, bindings(), state, store, keeper.PlanSettings(), object(),
                                  signer, 2, 100, False, 1, 1, 1)
@@ -389,6 +390,76 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(signer.calls, ["configure"])
         self.assertTrue(a["configured"])
         self.assertFalse(b["configured"])
+
+    def test_ready_open_head_refreshes_before_deadline(self):
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [X],
+                                   configured_plans={X: {"deadline": 200}})
+        with patch.object(keeper, "call_abi", return_value=(X, 0, 0)), \
+             patch.object(keeper, "q_launch_state", return_value=(1, True)), \
+             patch.object(keeper, "existing_config", return_value=(1, 60, 200)):
+            self.assertEqual(keeper.urgent_open_token(LogRpc(), bindings(), state,
+                                                       keeper.PlanSettings(), 100), X)
+        with patch.object(keeper, "call_abi", return_value=(X, 0, 0)), \
+             patch.object(keeper, "q_launch_state", return_value=(1, True)), \
+             patch.object(keeper, "existing_config", return_value=(1, 60, 400)):
+            state.configured_plans[X]["deadline"] = 400
+            self.assertIsNone(keeper.urgent_open_token(LogRpc(), bindings(), state,
+                                                        keeper.PlanSettings(), 100))
+
+    def test_urgent_head_precedes_lanes_but_failed_plan_does_not_starve_them(self):
+        cold, head = token(1), token(2)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}",
+                                   [cold, head], priority_tokens=[cold],
+                                   priority_expires={cold: 10})
+        cold_plan = keeper.plan_position(cold, Q_LOW, 10**27, 10**27,
+                                         10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        class FakeSigner:
+            def __init__(self): self.calls = []
+            def submit(self, kind, selected, data, _state, _store):
+                self.calls.append((kind, selected))
+        signer = FakeSigner()
+        checked = []
+        def plan(_rpc, _bindings, selected, *_args):
+            checked.append(selected)
+            if selected == head:
+                raise keeper.WaitForPrice("head quote unavailable")
+            return cold_plan
+        with patch.object(keeper, "discover_launches", return_value=0), \
+             patch.object(keeper, "urgent_open_token", return_value=head), \
+             patch.object(keeper, "latest_block_time", return_value=100), \
+             patch.object(keeper, "q_launch_state", return_value=(1, True)), \
+             patch.object(keeper, "make_plan", side_effect=plan), \
+             patch.object(keeper, "configured_plan_reusable", return_value=False):
+            result = keeper.run_cycle(LogRpc(head=12), bindings(), state, FakeStore(),
+                                      keeper.PlanSettings(), object(), signer,
+                                      2, 100, False, 2, 1, 2)
+        self.assertEqual(checked, [head, cold])
+        self.assertEqual(signer.calls, [("configure", cold)])
+        self.assertEqual(result["waiting"]["head quote unavailable"], 1)
+
+    def test_urgent_head_uses_refresh_margin_for_reconfiguration(self):
+        cold, head = token(1), token(2)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}",
+                                   [cold, head], priority_tokens=[cold])
+        plan = keeper.plan_position(head, Q_LOW, 10**27, 10**27,
+                                    10**18, 2 * 10**18, 100, keeper.PlanSettings())
+        class FakeSigner:
+            def __init__(self): self.selected = []
+            def submit(self, kind, selected, _data, _state, _store):
+                self.selected.append((kind, selected))
+        signer = FakeSigner()
+        with patch.object(keeper, "discover_launches", return_value=0), \
+             patch.object(keeper, "urgent_open_token", return_value=head), \
+             patch.object(keeper, "latest_block_time", return_value=100), \
+             patch.object(keeper, "q_launch_state", return_value=(1, True)), \
+             patch.object(keeper, "make_plan", return_value=plan), \
+             patch.object(keeper, "configured_plan_reusable", return_value=False) as reusable:
+            result = keeper.run_cycle(LogRpc(head=12), bindings(), state, FakeStore(),
+                                      keeper.PlanSettings(), object(), signer,
+                                      2, 100, False, 2, 1, 1)
+        self.assertEqual(result["token"], head)
+        self.assertEqual(signer.selected, [("configure", head)])
+        self.assertEqual(reusable.call_args.args[-1], 180)
 
     def test_durable_log_cursor_keeps_pending_tokens_until_q_enqueues(self):
         rpc = LogRpc([log(11, X)], head=14)

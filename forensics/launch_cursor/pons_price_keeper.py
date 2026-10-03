@@ -55,6 +55,7 @@ MAX_SQRT = 1461446703485210103287273052203988822378723970342
 
 CONFIGURE = "0x" + keccak(text="configureOpen(address,bytes)")[:4].hex()
 PROCESS_NEXT = "0x4ba3eeaf"  # processNext()
+NEXT_ACTION = "0x" + keccak(text="nextAction()")[:4].hex()
 TRANSFER_STEP_GAS_LIMIT = "0x" + keccak(text="transferStepGasLimit()")[:4].hex()
 # Q reserves 150k after the executor call and up to 140k for a harvest
 # preview. Leave room for processNext dispatch and EIP-150 call forwarding.
@@ -204,7 +205,7 @@ def liquidity_for_budget(budget: int, lower_sqrt: int, upper_sqrt: int, quote_is
 class PlanSettings:
     utilization_bps: int = 9500
     tick_spacing: int = 60
-    ttl_seconds: int = 120
+    ttl_seconds: int = 600
     max_snapshot_age_seconds: int = 20
 
     def validate(self) -> None:
@@ -834,6 +835,31 @@ def existing_config(rpc: watch.Rpc, executor: str, token: str) -> tuple[Any, ...
                     ["uint160", "int24", "uint64"])
 
 
+def urgent_open_token(rpc: watch.Rpc, bindings: Bindings, state: KeeperState,
+                      settings: PlanSettings, now: int) -> str | None:
+    """Select a ready Q head whose short-lived open plan needs refreshing."""
+    if not state.tokens:
+        return None
+    token, step, eligible_at = call_abi(rpc, bindings.q, NEXT_ACTION,
+                                         outputs=["address", "uint8", "uint64"])
+    token = watch.address(token)
+    if (int(step) != 0 or token == ZERO or token not in state.tokens or
+            int(eligible_at) > now):
+        return None
+    stage, configured = q_launch_state(rpc, bindings.q, token)
+    if stage != 1:
+        return None
+    if not configured:
+        return token
+    record = state.configured_plans.get(token)
+    if record is None:
+        return token
+    deadline = int(existing_config(rpc, bindings.executor, token)[2])
+    refresh_seconds = min(180, max(30, settings.ttl_seconds // 2))
+    return token if (deadline < now + refresh_seconds or
+                     record["deadline"] != deadline) else None
+
+
 def existing_config_safe(rpc: watch.Rpc, bindings: Bindings, plan: OpenPlan,
                          existing: tuple[Any, ...], now: int) -> bool:
     try:
@@ -885,12 +911,13 @@ def _configured_plan_record(rpc: watch.Rpc, data: str, tx_hash: str) -> dict[str
 
 
 def configured_plan_reusable(rpc: watch.Rpc, bindings: Bindings, state: KeeperState,
-                             plan: OpenPlan, now: int) -> bool:
+                             plan: OpenPlan, now: int,
+                             min_remaining_seconds: int = 30) -> bool:
     """Reuse only a confirmed plan whose full arrays remain Q's latest hash."""
     record = state.configured_plans.get(plan.token)
     if record is None or record["staticHash"] != config_static_hash(plan.abi_config()):
         return False
-    if record["deadline"] < now + 30:
+    if record["deadline"] < now + min_remaining_seconds:
         return False
     if watch.block_hash(rpc, record["block"]) != record["blockHash"]:
         return False
@@ -1265,12 +1292,17 @@ def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: Kee
     state.schedule_round += 1
     if _expire_priority(state):
         store.save(state)
+    head_token = (urgent_open_token(rpc, bindings, state, settings, latest_block_time(rpc))
+                  if signer is not None else None)
+    head_refresh_seconds = min(180, max(30, settings.ttl_seconds // 2))
     def deferred_count() -> int:
         return sum(token not in seen for token in state.tokens)
 
     for slot in range(max_token_checks):
         priority = (schedule_phase + slot) % 3 != 2
-        token = _take_scheduled(state, priority, seen)
+        head_slot = (slot == 0 and head_token is not None and
+                     (max_token_checks > 1 or schedule_phase != 2))
+        token = head_token if head_slot else _take_scheduled(state, priority, seen)
         if token is None:
             token = _take_scheduled(state, not priority, seen)
         if token is None:
@@ -1318,7 +1350,8 @@ def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: Kee
         # our confirmed calldata, and Q's latest plan-hash event proves that
         # those exact arrays have not been replaced since our transaction.
         should_configure = not configured_plan_reusable(
-            rpc, bindings, state, plan, latest_block_time(rpc)
+            rpc, bindings, state, plan, latest_block_time(rpc),
+            head_refresh_seconds if head_slot else 30
         )
         if should_configure:
             try:
@@ -1362,7 +1395,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-seconds", type=float, default=10)
     parser.add_argument("--utilization-bps", type=int, default=9500)
     parser.add_argument("--tick-spacing", type=int, default=60)
-    parser.add_argument("--ttl-seconds", type=int, default=120)
+    parser.add_argument("--ttl-seconds", type=int, default=600)
     parser.add_argument("--max-snapshot-age-seconds", type=int, default=20)
     parser.add_argument("--max-config-gas", type=int, default=500000)
     parser.add_argument("--max-process-gas", type=int, default=10000000)

@@ -101,7 +101,7 @@ Use `--no-process-next` if another process drives Q's scheduler. For repeated
 serial cycles use `pons_keeper_supervisor.py`. `--utilization-bps`,
 `--tick-spacing`, `--ttl-seconds`, snapshot age, work budgets, confirmation
 depth, and gas/fee caps are available in `--help`. The default config deadline
-is 120 seconds and the executor allows at most 15 minutes. The default
+is 600 seconds and the executor allows at most 15 minutes. The default
 `processNext` gas cap is 10 million because one open now creates three LP
 positions; the keeper still estimates gas and refuses an estimate over the
 configured cap.
