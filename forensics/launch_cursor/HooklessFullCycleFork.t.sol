@@ -271,7 +271,8 @@ contract HooklessFullCycleForkTest {
         require(s.weth.balanceOf(address(s.fanout)) > fanoutBefore, "wizard fanout unpaid");
         require(DEV.balance > devBefore, "developer unpaid");
         (,, StaticNextPoolFee.Status status) = s.q.feePolicy().assignments(ACTIVE_X);
-        require(status == StaticNextPoolFee.Status.Censored, "unvalued ROI counted");
+        require(status == StaticNextPoolFee.Status.Selected && s.q.outcomeDeadline(ACTIVE_X) != 0,
+            "unvalued exit not pending");
         bool active;
         try s.executor.inspect(ACTIVE_X) returns (uint160, bool, bool, bool, bool) {
             active = true;

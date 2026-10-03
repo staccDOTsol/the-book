@@ -30,7 +30,7 @@ reads use one recent block tag, with the block hash checked before and after.
 The live signer is restricted to `PositionInspector.poke(address)`,
 `Q.configureExit(address,(uint128,uint128,uint256,uint256,uint64))`, and
 permissionless `Q.processNext()`. It checks Q/executor/inspector/router,
-priceConfigurator, guard, Quoter, and factory bindings at startup. It stores
+the distinct `exitConfigurator`, guard, Quoter, and factory bindings at startup. It stores
 the signed raw transaction and hash in `.local/pons-exit-keeper.json` before
 broadcast, and validates them before recovery or rebroadcast. Gas and fee
 caps apply to each selector. A stale unknown transaction or ambiguous consumed
@@ -47,7 +47,7 @@ python3 -m venv .venv
 
 Set `PONS_HTTP_RPC_URL`, `PONS_CHAIN_ID`, `PONS_Q_ADDRESS`, and
 `PONS_PRICE_GUARD_ADDRESS` in the process environment. Supply
-`PONS_PRICE_CONFIGURATOR_PRIVATE_KEY` only for `--live`; read-only mode does
+`PONS_EXIT_CONFIGURATOR_PRIVATE_KEY` only for `--live`; read-only mode does
 not read it. First run with inclusive `--start-block` at or before Q's first
 open event, preferably Q deployment:
 
@@ -57,23 +57,28 @@ open event, preferably Q deployment:
 
 Later read-only cycles omit `--start-block`. After configuring the signer and
 RPC runtime, `--live --once` performs one bounded cycle. Live mode requires
-`--once`; the supervisor below provides continuous serial operation.
+`--once`; the supervisor below provides continuous independent operation.
 `--no-process-next` leaves Q scheduler calls to another
 worker. Inspect `--help` for confirmation depth, poll interval, TTL, LP/swap
 haircuts, gas caps, and fee caps. The default v4 Quoter is
 `0x8dc178efb8111bb0973dd9d722ebeff267c98f94`.
 
-The price and exit keepers use Q's **same** priceConfigurator nonce. Their
-live process lock is shared per Q in `.local`, so run their `--once --live`
-cycles serially. A pending signed transaction in one
-keeper's state prevents the other keeper from signing after a crash until
-the first recovers it. The first invocation's `--start-block` must cover all
+The owner watcher, price keeper, and exit keeper have **three distinct**
+signing accounts and nonce streams. Fund the exit account independently for
+gas. `Q.exitConfigurator` is the only role allowed to configure exit minima;
+the exit keeper's `.local` lock and signed transaction journal are separate
+from the price keeper's. A pending price transaction cannot block an exit
+inspection or submission. Each keeper recovers only its own pending signed
+transaction before signing another. The first invocation's `--start-block` must cover all
 opens; a later start cannot reconstruct a position opened before that cursor.
 
 The opt-in supervisor starts the owner watcher as an independent websocket
-process and runs one exit cycle then one price cycle, serially. It gives a
-pending signed configurator transaction priority on recovery. Supply the same
-environment variables above plus `PONS_WS_RPC_URL` and `PONS_OWNER_PRIVATE_KEY`.
+process and runs exit and price cycles in independent subprocess slots,
+servicing exit first at each poll. It permits each slot to recover a pending
+transaction without waiting for the other. Supply the same environment
+variables above plus `PONS_WS_RPC_URL`, `PONS_OWNER_PRIVATE_KEY`, and
+`PONS_PRICE_CONFIGURATOR_PRIVATE_KEY`. The supervisor rejects duplicate
+signer addresses before launching any child.
 On first use, supply inclusive block cursors at or before the first relevant
 event for each component (usually launch factory activity and Q deployment):
 
@@ -85,9 +90,9 @@ event for each component (usually launch factory activity and Q deployment):
 ```
 
 On restarts, saved `.local` cursors are reused; omit the block flags. Child
-cycles have a 600-second timeout and bounded retry/backoff. Repeated failures
-stop the supervisor; a replaced or ambiguous signer nonce requires external
-reconciliation because automatically guessing a replacement transaction is
+cycles have a 600-second timeout and capped retry/backoff per signer; a
+failing price slot does not stop the exit slot. A replaced or ambiguous signer
+nonce still requires external reconciliation because guessing a replacement transaction is
 unsafe. The owner watcher has a separate signer and can run concurrently.
 
 ## Limits

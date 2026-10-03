@@ -132,6 +132,17 @@ class Store:
 
 
 class ExitKeeperTests(unittest.TestCase):
+    def test_exit_signer_binding_rejects_price_or_owner_account(self):
+        owner, opening, exiting = "0x" + "01" * 20, "0x" + "02" * 20, "0x" + "03" * 20
+        getters = {exit_keeper.OWNER: owner,
+                   price.PRICE_CONFIGURATOR: opening,
+                   exit_keeper.EXIT_CONFIGURATOR: exiting}
+        with patch.object(price, "verify_bindings", return_value=bindings().price), \
+             patch.object(price, "read_address", side_effect=lambda _rpc, _q, method: getters[method]):
+            for signer in (owner, opening):
+                with self.assertRaisesRegex(exit_keeper.ExitError, "isolated Q.exitConfigurator"):
+                    exit_keeper.verify_bindings(object(), 4663, Q, GUARD, price.QUOTER, signer)
+
     def test_phase_zero_plan_includes_harvested_x_and_quotes_half_min_eth(self):
         rpc, quotes = PlannerRpc(), Quotes()
         with patch.object(price, "read_launch", return_value=factory_launch(0)):

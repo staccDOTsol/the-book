@@ -1,0 +1,128 @@
+# Hookless Pons X/Q bootstrap on Robinhood
+
+Status: **deployment plan and local fork verification only**. No Q, executor, inspector, guard, or router from this plan has been deployed on Robinhood. No transaction was broadcast while preparing it. `PonsBootstrap.s.sol` reads public settings, checks live contract bindings, and contains staged deployment functions for a later reviewed execution. Its `preflightLaunch()` only returns calldata.
+
+## Verified route and pins
+
+At Robinhood block **78,939,587** on 2026-10-03, chain ID was 4663 and the contracts below had code. Read calls confirmed that both current Uniswap Instant Launch variants point to the pinned launcher, PoolManager, PositionManager, and respective FeeSplitters, and expose `TOTAL_SUPPLY=1e27`, `LP_FEE=2500`, `TICK_SPACING=25`, and `initialTick=198050`. PoolManager bindings for PositionManager, StateView, Quoter, Pons factory and hook were also checked. The pinned launcher reported canonical Permit2.
+
+| Role | Address |
+| --- | --- |
+| Uniswap v4 PoolManager | `0x8366a39CC670B4001A1121B8F6A443A643e40951` |
+| PositionManager | `0x58daec3116aae6D93017bAAea7749052E8a04fA7` |
+| StateView | `0xF3334192D15450CdD385c8B70e03f9A6bD9E673b` |
+| v4 Quoter | `0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94` |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
+| Pons V2 factory | `0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e` |
+| LiquidityLauncher v3.2.0 | `0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0` |
+| Instant Launch v3.3.0, creator fees on | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` |
+| Its FeeSplitter / beneficiary vault | `0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C` / `0x26d2F7AcB07707034406a0dC458351Bb63C02553` |
+| Instant Launch v3.3.0, creator fees off | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` |
+| Its FeeSplitter | `0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee` |
+| Robinhood WETH | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
+| Squarefun wizard fanout candidate | `0x1b88A6c6516FD2918905186F21Bb9F5CaA1a15c8` |
+
+The [Uniswap deployment registry](https://github.com/Uniswap/liquidity-launcher/blob/main/README.md) identifies the launcher and current Robinhood strategies; the [Uniswap SDK registry](https://github.com/Uniswap/sdks/blob/main/sdks/liquidity-launcher-sdk/src/addresses.ts) marks the v3.3.0 pair current and records its 25-tick pool shape. The [official Robinhood deployment list](https://github.com/Uniswap/contracts/blob/main/deployments/4663.md) supplies v4, Permit2, and WETH addresses. The [current InstantLaunchStrategy source](https://github.com/Uniswap/liquidity-launcher/blob/main/src/strategies/InstantLaunchStrategy.sol) is the source of the 1 billion supply, exact transfer, fee-beneficiary, pool, and locked NFT behavior. An older paragraph in Uniswap's Technical Reference says spacing 60; the current strategy source, SDK deployment entry, and live getters agree on **25** for this v3.3.0 route. Older launch generations can still have spacing 60.
+
+The fanout address comes from the [strategy record](../record/160-pons-every-launch-pool-plan.md) and its [verified Sourcify contract](https://sourcify.dev/server/v2/contract/4663/0x1b88A6c6516FD2918905186F21Bb9F5CaA1a15c8?fields=abi,sources). The script pins the observed runtime code hash `0x384c9220050083b0efd1cac6ac47ea6901e68a0a10a9ff1ad3a06ddade6d21ae`. Confirm this is still the intended **Squarefun wizard** recipient in the live Squarefun product before binding; code and a historical record cannot establish current recipient intent. Supply the intended developer address explicitly; the script can check its relationship to the deployed router but cannot choose it.
+
+## Stage order
+
+1. **Core:** deploy `HooklessLPExecutor`, `PositionInspector`, then the custom 1 billion/18-decimal `LaunchCursorToken` Q. Bind Q as executor controller and inspector cursor. The script puts PoolManager, PositionManager, Permit2, launcher, selected launch strategy and FeeSplitter, Pons factory, and Quoter on Q's internal-endpoint list and turns off automatic cursor work. The initial Q supply remains with the deployer.
+2. **Q launch:** choose one current Instant Launch variant. The fees-on variant sends 40% of native LP fees to its beneficiary vault; the rest of native fees and all token fees go to its compounding recipient. The fees-off variant has a zero beneficiary vault and all LP fees go to compounding. `configData` is always `abi.encode(feeBeneficiary)`: a nonzero address other than the launcher is required even in fees-off mode, where it is ignored. `preflightLaunch()` returns exact calldata for Q's `approve(Permit2)`, Permit2's `approve(Q, launcher)`, and one launcher `multicall([depositToken(Q, full supply), distributeToken(Q, selected strategy, full supply, configData, salt=0)])`. The first two approvals are separate owner transactions; deposit and distribute **must remain in one atomic multicall**. Never leave Q in the launcher between transactions: another caller could distribute it. See the [Uniswap Deployment Guide](https://github.com/Uniswap/liquidity-launcher/blob/main/docs/DeploymentGuide.md) and [LiquidityLauncher source](https://github.com/Uniswap/liquidity-launcher/blob/main/src/LiquidityLauncher.sol).
+3. **Make Q/ETH executable and fund the vault:** inspect the `TokenLaunched` receipt for Q, selected strategy, expected FeeSplitter, and the minted NFT owner. The fork test showed the launch NFT is locked with positive position liquidity, while StateView's *active pool liquidity* is zero at the exact initial single-sided upper boundary. `deployVaultBuyer()` creates a `HooklessQuoteBuyAdapter` with **source = the Q owner EOA**. `preflightVaultBuy()` quotes an exact ETH input through the canonical v4 Quoter, derives a nonzero Q minimum with a bounded haircut and a deadline of at most five minutes, and returns `buyQ(minQOut, executor, deadline)` calldata. Send exactly the quoted ETH input from that same owner to the verified adapter only after reviewing the fresh quote. The recipient is fixed to the executor by the generated calldata. A first ETH→Q buy moved the pool into its LP range and made active liquidity positive in the fork test. The post-launch script waits for that state; the price guard also requires positive active Q/ETH liquidity. The launch locks the initial Q supply and leaves the executor without Q until such a market buy.
+4. **Post-launch bindings:** after active Q/ETH liquidity exists, deploy `OpenPriceGuard`, bind it; deploy `ExitSettlementRouter` with the pinned WETH/fanout and explicit developer, bind it; deploy `OpenExecutableDepthGuard` using the canonical Quoter, bind it. Add the router and its three child adapters to Q's internal endpoints. Assign the price configurator. Automatic cursor work remains off.
+5. **Activation:** fund the executor with independently acquired Q, set a minimum unreserved Q threshold, verify the distinct owner/watcher, price keeper, and exit keeper signers and the intended recipients, then enable automatic transfer-triggered work. The script checks the live Q/ETH pool, guard/router links, recipient addresses, endpoint exclusions, and vault Q threshold. The offchain watcher and keepers still need their own dry-run and journal review.
+
+The stage functions comprise multiple onchain transactions if later broadcast. A failed later transaction can leave earlier deployments or one-time bindings in place. Reconcile every mined receipt and address before any continuation; `deployAfterLaunch()` refuses a partially bound executor.
+
+## Read-only commands and required inputs
+
+These examples are **simulations**. None contains `--broadcast`, a private key, or an account selector. Run from the repository root. Use a Robinhood RPC; a provider URL can be supplied privately through `RH_RPC_URL` without printing it. The public endpoint below is rate limited.
+
+```sh
+export RH_RPC_URL=https://rpc.mainnet.chain.robinhood.com
+export PONS_DEPLOYER=0xYOUR_OWNER_EOA
+export PONS_INSTANT_STRATEGY=0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2  # or fees-off address above
+export PONS_Q_NAME='Your Q Name'
+export PONS_Q_SYMBOL='Q'
+export PONS_RETRY_DELAY_SECONDS=30
+export PONS_TRANSFER_STEP_GAS_LIMIT=3000000
+export PONS_HARVEST_GAS_PRICE_CEILING_WEI=1000000000
+
+/Users/stacc/.foundry/bin/forge script forensics/launch_cursor/PonsBootstrap.s.sol:PonsBootstrap \
+  --sig 'deployCore()' --rpc-url "$RH_RPC_URL" --root . --use 0.8.26 --optimizer-runs 200
+```
+
+The returned core addresses in a dry run are simulated. For later stages, `PONS_EXECUTOR_ADDRESS`, `PONS_INSPECTOR_ADDRESS`, and `PONS_Q_ADDRESS` must come from **actual verified deployment receipts**, not those dry-run predictions. Keep the same `PONS_DEPLOYER` and `PONS_INSTANT_STRATEGY` throughout.
+
+```sh
+export PONS_EXECUTOR_ADDRESS=0xMINED_EXECUTOR
+export PONS_INSPECTOR_ADDRESS=0xMINED_INSPECTOR
+export PONS_Q_ADDRESS=0xMINED_Q
+export PONS_FEE_BENEFICIARY=0xINTENDED_NONZERO_BENEFICIARY
+export PONS_PERMIT2_EXPIRATION=2000000000  # replace with a reviewed future Unix time
+
+/Users/stacc/.foundry/bin/forge script forensics/launch_cursor/PonsBootstrap.s.sol:PonsBootstrap \
+  --sig 'preflightLaunch()' --rpc-url "$RH_RPC_URL" --root . --use 0.8.26 --optimizer-runs 200
+```
+
+Review the returned targets/calldata and execute them from the Q owner only after the recipient and launch choice are approved. The atomic launch call uses **zero native ETH**. The script does not submit those calls. The initial supply fits both `uint160` Permit2 and `uint128` strategy amount fields. Do not use the ordinary Pools.xyz creation UI for this custom token path: its support and listing behavior for externally supplied Q are unverified.
+
+After a confirmed Q launch and its NFT/receipt review, simulate deployment of the restricted buyer. Record its actual mined address if later deployed:
+
+```sh
+/Users/stacc/.foundry/bin/forge script forensics/launch_cursor/PonsBootstrap.s.sol:PonsBootstrap \
+  --sig 'deployVaultBuyer()' --rpc-url "$RH_RPC_URL" --root . --use 0.8.26 --optimizer-runs 200
+
+export PONS_VAULT_BUY_ADAPTER_ADDRESS=0xMINED_OWNER_ONLY_BUYER
+export PONS_VAULT_BUY_ETH_WEI=10000000000000000  # example: 0.01 ETH; choose an approved spend
+export PONS_VAULT_BUY_SLIPPAGE_BPS=500      # example: 5% haircut, maximum allowed is 10%
+export PONS_VAULT_BUY_TTL_SECONDS=120       # maximum allowed is 300
+
+/Users/stacc/.foundry/bin/forge script forensics/launch_cursor/PonsBootstrap.s.sol:PonsBootstrap \
+  --sig 'preflightVaultBuy()' --rpc-url "$RH_RPC_URL" --root . --use 0.8.26 --optimizer-runs 200
+```
+
+The preflight returns the verified adapter target, exact `ethIn` transaction value, Quoter output, `minQOut`, deadline, and `buyQ` calldata. This is a **read-only plan**; the Quoter's method is non-view internally but runs only in the local simulation. Review the output at a fresh block immediately before any owner-wallet execution. The adapter rejects another caller, a zero minimum, a partial ETH fill, a Q output below the minimum, or an expired deadline. Check the mined receipt, executor Q balance, and positive active Q/ETH liquidity before proceeding. No unbounded `minQOut=1` production call is part of the plan.
+
+After that Q/ETH buy produces active liquidity:
+
+```sh
+export PONS_DEVELOPER=0xINTENDED_ETH_RECIPIENT
+export PONS_PRICE_CONFIGURATOR=0xINTENDED_PRICE_KEEPER_SIGNER
+export PONS_EXIT_CONFIGURATOR=0xDISTINCT_EXIT_KEEPER_SIGNER
+export PONS_SPOT_MAX_DEVIATION_BPS=1000
+export PONS_DEPTH_SAFETY_BPS=1500
+
+/Users/stacc/.foundry/bin/forge script forensics/launch_cursor/PonsBootstrap.s.sol:PonsBootstrap \
+  --sig 'deployAfterLaunch()' --rpc-url "$RH_RPC_URL" --root . --use 0.8.26 --optimizer-runs 200
+```
+
+After actual post-launch bindings and separately acquired Q are verified in the executor, set the smallest acceptable idle inventory in raw 18-decimal units and simulate activation:
+
+The owner, price, and exit signers must be three distinct accounts. Fund the
+exit signer with ETH for gas; its nonce stream must remain independent of
+owner enqueue transactions and price configuration transactions.
+
+```sh
+export PONS_MIN_IDLE_Q_WEI=1000000000000000000000  # example: 1,000 Q; choose an approved budget
+
+/Users/stacc/.foundry/bin/forge script forensics/launch_cursor/PonsBootstrap.s.sol:PonsBootstrap \
+  --sig 'activate()' --rpc-url "$RH_RPC_URL" --root . --use 0.8.26 --optimizer-runs 200
+```
+
+The script has no `envBytes32`, key file, keystore, or private-key handling. A future real broadcast must be run with an approved external Forge signer and reviewed transaction simulation. Private credentials belong outside this repository and outside these examples.
+
+## Verification and remaining limits
+
+```sh
+/Users/stacc/.foundry/bin/forge build forensics/launch_cursor/PonsBootstrap.s.sol \
+  --root . --use 0.8.26 --optimizer-runs 200
+
+/Users/stacc/.foundry/bin/forge test --root . --contracts forensics/launch_cursor \
+  --match-contract PonsBootstrapForkTest --fork-url "$RH_RPC_URL" \
+  --use 0.8.26 --optimizer-runs 200
+```
+
+The single sequential fork test exercises **both** fees-on and fees-off with the live v3.3.0 strategy addresses, a fresh custom Q per variant, the real Permit2/launcher, a locked v4 launch NFT, the script's Quoter-bounded owner-to-executor Q buy, post-launch guard/router bindings, and final activation. It passed on 2026-10-03 with no live broadcast. Without a Robinhood fork it skips cleanly. This verifies contract-level compatibility of this Q implementation with the currently deployed launcher route; it does not verify Pools.xyz frontend listing, Q demand or value, future Pons profitability, keeper operation, or production recipient intent. The bootstrap script does not parse `TokenLaunched` receipts or inspect Squarefun's current frontend, so those remain explicit operator checks.

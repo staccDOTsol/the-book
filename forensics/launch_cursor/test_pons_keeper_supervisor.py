@@ -1,10 +1,8 @@
-"""Offline supervisor ordering and bounded child failure tests."""
+"""Offline supervisor signer isolation and independent child recovery tests."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import shutil
 import sys
 import unittest
 from unittest.mock import patch
@@ -14,43 +12,52 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pons_keeper_supervisor as supervisor
 
 
-class Completed:
-    returncode = 0
+class Child:
+    def __init__(self):
+        self.returncode = None
+    def poll(self):
+        return self.returncode
+    def terminate(self):
+        self.returncode = -15
+    def kill(self):
+        self.returncode = -9
+    def wait(self, timeout=None):
+        return self.returncode
 
 
 class SupervisorTests(unittest.TestCase):
-    def test_serial_exit_then_price_and_pending_owner_first(self):
-        local = supervisor.LOCAL / f"supervisor-test-{uuid4().hex}"
-        local.mkdir(parents=True)
-        exit_state, price_state = local / "exit.json", local / "price.json"
-        exit_state.write_text(json.dumps({"pendingTx": None}))
-        price_state.write_text(json.dumps({"pendingTx": None}))
-        exit_spec = supervisor.KeeperSpec("exit", Path("exit.py"), exit_state, None)
-        price_spec = supervisor.KeeperSpec("price", Path("price.py"), price_state, None)
+    def test_price_pending_cannot_block_new_exit_cycle(self):
+        exit_spec = supervisor.KeeperSpec("exit", Path("exit.py"), Path("exit.json"), 1)
+        price_spec = supervisor.KeeperSpec("price", Path("price.py"), Path("price.json"), 1)
+        exit_job, price_job = supervisor.KeeperJob(exit_spec), supervisor.KeeperJob(price_spec)
+        exit_child, price_child, next_exit = Child(), Child(), Child()
         calls = []
-        def run(cmd, **kwargs):
+        def start(cmd, **kwargs):
             calls.append((cmd, kwargs))
-            return Completed()
-        try:
-            with patch.object(supervisor.subprocess, "run", side_effect=run):
-                done = supervisor.run_keeper_cycle(price_spec, exit_spec, 30)
-                self.assertEqual(done, ["exit", "price"])
-                self.assertEqual([Path(call[0][1]).name for call in calls],
-                                 ["exit.py", "price.py"])
-                self.assertTrue(all("--once" in cmd and "--live" in cmd for cmd, _ in calls))
-                self.assertTrue(all(kwargs["timeout"] == 30 for _, kwargs in calls))
-                self.assertTrue(all("PONS_OWNER_PRIVATE_KEY" not in kwargs["env"]
-                                    for _, kwargs in calls))
-                calls.clear()
-                price_state.write_text(json.dumps({"pendingTx": {"txHash": "0x1"}}))
-                self.assertEqual(supervisor.run_keeper_cycle(price_spec, exit_spec, 30),
-                                 ["price"])
-                self.assertEqual(Path(calls[0][0][1]).name, "price.py")
-                exit_state.write_text(json.dumps({"pendingTx": {"txHash": "0x2"}}))
-                with self.assertRaisesRegex(supervisor.SupervisorError, "both configurator"):
-                    supervisor.run_keeper_cycle(price_spec, exit_spec, 30)
-        finally:
-            shutil.rmtree(local)
+            return [exit_child, price_child, next_exit][len(calls) - 1]
+        with patch.object(supervisor.subprocess, "Popen", side_effect=start):
+            self.assertEqual(supervisor.service_keeper(exit_job, 10, 600, 1, 60), (None, None))
+            self.assertEqual(supervisor.service_keeper(price_job, 10, 600, 1, 60), (None, None))
+            self.assertEqual([Path(call[0][1]).name for call in calls], ["exit.py", "price.py"])
+            exit_child.returncode = 0
+            self.assertEqual(supervisor.service_keeper(exit_job, 11, 600, 1, 60), ("exit", None))
+            self.assertEqual(supervisor.service_keeper(price_job, 11, 600, 1, 60), (None, None))
+            self.assertEqual(supervisor.service_keeper(exit_job, 12, 600, 1, 60), (None, None))
+        self.assertIs(exit_job.process, next_exit)
+        self.assertIs(price_job.process, price_child)
+
+    def test_timeout_restarts_only_own_signer_after_backoff(self):
+        spec = supervisor.KeeperSpec("price", Path("price.py"), Path("price.json"), 1)
+        job = supervisor.KeeperJob(spec)
+        child = Child()
+        with patch.object(supervisor.subprocess, "Popen", return_value=child):
+            supervisor.service_keeper(job, 10, 20, 1, 10)
+            done, error = supervisor.service_keeper(job, 31, 20, 1, 10)
+        self.assertIsNone(done)
+        self.assertIn("timeout", str(error))
+        self.assertEqual(job.retry_after, 32)
+        self.assertIsNone(job.process)
+        self.assertEqual(child.returncode, -15)
 
     def test_first_run_requires_start_block_and_passes_it_only_once(self):
         state = supervisor.LOCAL / f"supervisor-first-{uuid4().hex}.json"
@@ -71,16 +78,34 @@ class SupervisorTests(unittest.TestCase):
         with patch.dict(supervisor.os.environ, {
                 "PONS_OWNER_PRIVATE_KEY": "owner-fixture",
                 "PONS_PRICE_CONFIGURATOR_PRIVATE_KEY": "config-fixture",
+                "PONS_EXIT_CONFIGURATOR_PRIVATE_KEY": "exit-fixture",
                 "PONS_HTTP_RPC_URL": "https://rpc.example"}):
             watcher_env = supervisor.child_env(watcher)
             price_env = supervisor.child_env(price)
             exit_env = supervisor.child_env(exit_keeper)
         self.assertEqual(watcher_env["PONS_OWNER_PRIVATE_KEY"], "owner-fixture")
         self.assertNotIn("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY", watcher_env)
+        self.assertNotIn("PONS_EXIT_CONFIGURATOR_PRIVATE_KEY", watcher_env)
+        self.assertEqual(price_env["PONS_PRICE_CONFIGURATOR_PRIVATE_KEY"], "config-fixture")
+        self.assertNotIn("PONS_EXIT_CONFIGURATOR_PRIVATE_KEY", price_env)
+        self.assertEqual(exit_env["PONS_EXIT_CONFIGURATOR_PRIVATE_KEY"], "exit-fixture")
+        self.assertNotIn("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY", exit_env)
         for env in (price_env, exit_env):
-            self.assertEqual(env["PONS_PRICE_CONFIGURATOR_PRIVATE_KEY"], "config-fixture")
             self.assertNotIn("PONS_OWNER_PRIVATE_KEY", env)
             self.assertEqual(env["PONS_HTTP_RPC_URL"], "https://rpc.example")
+
+    def test_live_signers_must_be_three_distinct_accounts(self):
+        keys = {
+            "PONS_OWNER_PRIVATE_KEY": "0x" + "01" * 32,
+            "PONS_PRICE_CONFIGURATOR_PRIVATE_KEY": "0x" + "02" * 32,
+            "PONS_EXIT_CONFIGURATOR_PRIVATE_KEY": "0x" + "03" * 32,
+        }
+        with patch.dict(supervisor.os.environ, keys):
+            supervisor.verify_signer_isolation()
+        keys["PONS_EXIT_CONFIGURATOR_PRIVATE_KEY"] = keys["PONS_OWNER_PRIVATE_KEY"]
+        with patch.dict(supervisor.os.environ, keys):
+            with self.assertRaisesRegex(supervisor.SupervisorError, "must differ"):
+                supervisor.verify_signer_isolation()
 
     def test_immediately_failed_watcher_does_not_block_exit_cycle(self):
         class FailedWatcher:
@@ -88,13 +113,17 @@ class SupervisorTests(unittest.TestCase):
             def poll(self): return 1
         env = {name: "fixture" for name in supervisor.REQUIRED_ENV}
         with patch.dict(supervisor.os.environ, env), \
+             patch.object(supervisor, "verify_signer_isolation"), \
              patch.object(supervisor.signal, "signal"), \
              patch.object(supervisor.subprocess, "Popen", return_value=FailedWatcher()), \
-             patch.object(supervisor, "run_keeper_cycle", side_effect=KeyboardInterrupt) as cycle:
+             patch.object(supervisor, "write_status") as status, \
+             patch.object(supervisor, "service_keeper", side_effect=KeyboardInterrupt) as cycle:
             result = supervisor.main(["--live", "--watcher-start-block", "1",
                                       "--price-start-block", "1", "--exit-start-block", "1"])
         self.assertEqual(result, 0)
         cycle.assert_called_once()
+        self.assertEqual([call.kwargs["status"] for call in status.call_args_list],
+                         ["starting", "running", "stopped"])
 
 
 if __name__ == "__main__":

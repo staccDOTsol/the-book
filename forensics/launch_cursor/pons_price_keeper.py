@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import nullcontext
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import fcntl
 import json
 from math import isqrt
@@ -33,6 +33,10 @@ import pons_launch_watcher as watch
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / ".local"
 DEFAULT_STATE = LOCAL / "pons-price-keeper.json"
+MAX_PRIORITY_TOKENS = 64
+PRIORITY_ROUNDS = 9
+MAX_DISCOVERY_LOGS = 128
+MAX_DISCOVERY_SPLITS = 16
 QUOTER = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
 ZERO = "0x" + "00" * 20
 Q96 = 1 << 96
@@ -524,11 +528,19 @@ class KeeperState:
     last_hash: str
     tokens: list[str]
     pending_tx: dict[str, Any] | None = None
+    priority_tokens: list[str] = field(default_factory=list)
+    scan_cursor: int = 0
+    priority_cursor: int = 0
+    schedule_round: int = 0
+    priority_expires: dict[str, int] = field(default_factory=dict)
 
     def json(self) -> dict[str, Any]:
         return {"version": 1, "chainId": self.chain_id, "factory": watch.PONS_FACTORY,
                 "q": self.q, "guard": self.guard, "lastBlock": self.last_block,
-                "lastHash": self.last_hash, "tokens": self.tokens, "pendingTx": self.pending_tx}
+                "lastHash": self.last_hash, "tokens": self.tokens, "pendingTx": self.pending_tx,
+                "priorityTokens": self.priority_tokens, "scanCursor": self.scan_cursor,
+                "priorityCursor": self.priority_cursor, "scheduleRound": self.schedule_round,
+                "priorityExpires": self.priority_expires}
 
 
 class KeeperStore:
@@ -577,15 +589,37 @@ class KeeperStore:
             raise KeeperError("keeper state is bound to another chain, Q, or guard")
         block, block_hash, tokens, pending = (data.get("lastBlock"), data.get("lastHash"),
                                               data.get("tokens"), data.get("pendingTx"))
+        priority = data.get("priorityTokens", [])
+        scan_cursor = data.get("scanCursor", 0)
+        priority_cursor = data.get("priorityCursor", 0)
+        schedule_round = data.get("scheduleRound", 0)
+        priority_expires = data.get("priorityExpires")
+        if priority_expires is None and isinstance(priority, list) and type(schedule_round) is int:
+            priority_expires = {token: schedule_round + PRIORITY_ROUNDS for token in priority
+                                if isinstance(token, str)}
         if (not isinstance(block, int) or block < 0 or not isinstance(block_hash, str) or
                 not watch.HASH.fullmatch(block_hash) or not isinstance(tokens, list) or
                 any(not isinstance(t, str) or not watch.ADDRESS.fullmatch(t) for t in tokens) or
                 len(tokens) != len(set(tokens)) or
+                not isinstance(priority, list) or
+                any(not isinstance(t, str) or not watch.ADDRESS.fullmatch(t) for t in priority) or
+                len(priority) != len(set(priority)) or not set(priority).issubset(tokens) or
+                len(priority) > MAX_PRIORITY_TOKENS or
+                type(scan_cursor) is not int or scan_cursor < 0 or
+                scan_cursor >= max(1, len(tokens)) or
+                type(priority_cursor) is not int or priority_cursor < 0 or
+                priority_cursor >= max(1, len(priority)) or
+                type(schedule_round) is not int or schedule_round < 0 or
+                not isinstance(priority_expires, dict) or
+                set(priority_expires) != set(priority) or
+                any(type(expiry) is not int or expiry < 0 for expiry in priority_expires.values()) or
                 (pending is not None and not isinstance(pending, dict))):
             raise KeeperError("keeper state fields are malformed")
         if start_block is not None and start_block != block + 1:
             raise KeeperError("--start-block conflicts with saved keeper cursor")
-        return KeeperState(chain_id, q, guard, block, block_hash.lower(), tokens, pending)
+        return KeeperState(chain_id, q, guard, block, block_hash.lower(), tokens, pending,
+                           priority, scan_cursor, priority_cursor, schedule_round,
+                           priority_expires)
 
     def save(self, state: KeeperState) -> None:
         staging = self.path.with_suffix(self.path.suffix + f".{os.getpid()}.new")
@@ -675,33 +709,59 @@ class ConfiguratorLock:
 
 
 def discover_launches(rpc: watch.Rpc, state: KeeperState, store: KeeperStore,
-                      confirmations: int, block_span: int) -> int:
+                      confirmations: int, block_span: int, max_ranges: int = 2) -> int:
+    if max_ranges < 1:
+        raise KeeperError("discovery range budget must be positive")
     if watch.block_hash(rpc, state.last_block) != state.last_hash:
         raise KeeperError("keeper cursor block hash changed; reconcile the reorg")
     safe_head = watch.chain_head(rpc) - confirmations
     count = 0
+    ranges = 0
     known = set(state.tokens)
-    while state.last_block < safe_head:
+    while state.last_block < safe_head and ranges < max_ranges:
         first, last = state.last_block + 1, min(safe_head, state.last_block + block_span)
-        expected_hash = watch.block_hash(rpc, last)
-        logs = rpc.call("eth_getLogs", [{"address": watch.PONS_FACTORY,
-                                         "topics": [watch.TOKEN_LAUNCHED],
-                                         "fromBlock": hex(first), "toBlock": hex(last)}])
-        if not isinstance(logs, list) or watch.block_hash(rpc, last) != expected_hash:
+        # Shrink dense ranges before per-log canonical hash checks. Even a
+        # firehose range can consume at most MAX_DISCOVERY_LOGS such reads;
+        # no cursor is committed until the accepted subrange is validated.
+        attempts = 0
+        while True:
+            if attempts >= MAX_DISCOVERY_SPLITS:
+                raise KeeperError("launch range exceeds bounded split budget")
+            attempts += 1
+            expected_hash = watch.block_hash(rpc, last)
+            logs = rpc.call("eth_getLogs", [{"address": watch.PONS_FACTORY,
+                                             "topics": [watch.TOKEN_LAUNCHED],
+                                             "fromBlock": hex(first), "toBlock": hex(last)}])
+            if not isinstance(logs, list):
+                raise KeeperError("confirmed launch range response is malformed")
+            if len(logs) <= MAX_DISCOVERY_LOGS:
+                break
+            if last == first:
+                raise KeeperError("single launch block exceeds bounded discovery log cap")
+            last = first + (last - first) // 2
+        if watch.block_hash(rpc, last) != expected_hash:
             raise KeeperError("confirmed launch range changed during backfill")
+        block_hashes: dict[int, str] = {}
+        new_tokens: list[str] = []
         for log in sorted(logs, key=watch.log_order):
             number = watch.quantity(log.get("blockNumber"), "launch block")
-            if not first <= number <= last or str(log.get("blockHash", "")).lower() != watch.block_hash(rpc, number):
+            if number not in block_hashes:
+                block_hashes[number] = watch.block_hash(rpc, number)
+            if not first <= number <= last or str(log.get("blockHash", "")).lower() != block_hashes[number]:
                 raise KeeperError("noncanonical or out-of-range launch log")
             token = watch.token_from_log(log, watch.PONS_FACTORY)
             if token not in known:
-                state.tokens.append(token)
+                new_tokens.append(token)
                 known.add(token)
-                count += 1
         if watch.block_hash(rpc, last) != expected_hash:
             raise KeeperError("confirmed launch range changed during backfill")
+        for token in new_tokens:
+            state.tokens.append(token)
+            _prioritize(state, token)
+        count += len(new_tokens)
         state.last_block, state.last_hash = last, expected_hash
         store.save(state)
+        ranges += 1
     return count
 
 
@@ -954,37 +1014,128 @@ def configure_data(plan: OpenPlan) -> str:
                               [plan.token, plan.abi_config()]).hex()
 
 
+def _take_scheduled(state: KeeperState, priority: bool, seen: set[str]) -> str | None:
+    """Advance one durable round-robin lane, skipping checks already done."""
+    items = state.priority_tokens if priority else state.tokens
+    cursor = "priority_cursor" if priority else "scan_cursor"
+    for _ in range(len(items)):
+        index = getattr(state, cursor) % len(items)
+        token = items[index]
+        setattr(state, cursor, (index + 1) % len(items))
+        if token not in seen:
+            return token
+    return None
+
+
+def _drop_priority(state: KeeperState, token: str) -> bool:
+    if token not in state.priority_tokens:
+        return False
+    index = state.priority_tokens.index(token)
+    del state.priority_tokens[index]
+    if index < state.priority_cursor:
+        state.priority_cursor -= 1
+    state.priority_cursor %= max(1, len(state.priority_tokens))
+    state.priority_expires.pop(token, None)
+    return True
+
+
+def _prioritize(state: KeeperState, token: str) -> bool:
+    if token in state.priority_tokens:
+        return False
+    if len(state.priority_tokens) >= MAX_PRIORITY_TOKENS:
+        _drop_priority(state, state.priority_tokens[0])
+    state.priority_tokens.append(token)
+    state.priority_cursor = len(state.priority_tokens) - 1
+    state.priority_expires[token] = state.schedule_round + PRIORITY_ROUNDS
+    return True
+
+
+def _expire_priority(state: KeeperState) -> bool:
+    expired = [token for token in state.priority_tokens
+               if state.priority_expires.get(token, 0) <= state.schedule_round]
+    for token in expired:
+        _drop_priority(state, token)
+    return bool(expired)
+
+
+def _remove_pending_token(state: KeeperState, token: str) -> None:
+    _drop_priority(state, token)
+    index = state.tokens.index(token)
+    del state.tokens[index]
+    if index < state.scan_cursor:
+        state.scan_cursor -= 1
+    state.scan_cursor %= max(1, len(state.tokens))
+
+
 def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: KeeperStore,
               settings: PlanSettings, quotes: ExecutableQuoteProvider,
               signer: KeeperSigner | None, confirmations: int, block_span: int,
-              process_next: bool) -> dict[str, Any]:
-    found = discover_launches(rpc, state, store, confirmations, block_span)
+              process_next: bool, max_token_checks: int = 12,
+              max_discovery_ranges: int = 2,
+              max_plans: int = 2) -> dict[str, Any]:
+    if max_token_checks < 1 or max_discovery_ranges < 1 or max_plans < 1:
+        raise KeeperError("per-cycle work budgets must be positive")
+    found = discover_launches(rpc, state, store, confirmations, block_span,
+                              max_discovery_ranges)
     safe_head = watch.chain_head(rpc) - confirmations
     waiting: dict[str, int] = {}
-    # Newest launch first, matching Q's LIFO entry schedule. A token with no
-    # Q stage remains durable until the owner watcher enqueues it later.
-    for token in reversed(state.tokens[:]):
+    seen: set[str] = set()
+    planned = 0
+    # Two of every three slots favor newly found or already queued launches;
+    # the third rotates across *all* pending tokens. Rotating the first slot
+    # across cycles prevents early successful returns from starving either
+    # lane. Both cursors and the phase survive a restart.
+    schedule_phase = state.schedule_round % 3
+    state.schedule_round += 1
+    if _expire_priority(state):
+        store.save(state)
+    def deferred_count() -> int:
+        return sum(token not in seen for token in state.tokens)
+
+    for slot in range(max_token_checks):
+        priority = (schedule_phase + slot) % 3 != 2
+        token = _take_scheduled(state, priority, seen)
+        if token is None:
+            token = _take_scheduled(state, not priority, seen)
+        if token is None:
+            break
+        seen.add(token)
+        store.save(state)
         stage, configured = q_launch_state(rpc, bindings.q, token, max(0, safe_head))
         if stage not in (0, 1):
-            state.tokens.remove(token)
+            _remove_pending_token(state, token)
             store.save(state)
             continue
         if stage == 0:
+            # The factory log can be confirmed before the owner's enqueue
+            # transaction. Keep this fresh launch in its bounded priority
+            # window so it is retried promptly once Q sees the enqueue.
             waiting["not_enqueued_yet"] = waiting.get("not_enqueued_yet", 0) + 1
             continue
+        if _prioritize(state, token):
+            store.save(state)
+        if planned >= max_plans:
+            waiting["plan_budget_deferred"] = waiting.get("plan_budget_deferred", 0) + 1
+            continue
+        planned += 1
         try:
             plan = make_plan(rpc, bindings, token, settings, quotes)
         except UnsupportedLaunch as error:
-            state.tokens.remove(token)
+            _remove_pending_token(state, token)
             store.save(state)
             waiting[str(error)] = waiting.get(str(error), 0) + 1
             continue
         except WaitForPrice as error:
             reason = str(error)
+            if reason in ("Pons launch is in swept phase 1",
+                          "Q/ETH pool has no liquidity",
+                          "vault has no budgeted idle Q") and _drop_priority(state, token):
+                store.save(state)
             waiting[reason] = waiting.get(reason, 0) + 1
             continue
         if signer is None:
             return {"status": "planned_read_only", "found": found, "pending": len(state.tokens),
+                    "checked": len(seen), "planned": planned, "deferred": deferred_count(),
                     "plan": asdict(plan), "waiting": waiting}
         if q_launch_state(rpc, bindings.q, token)[0] != 1:
             waiting["launch_stage_changed_during_plan"] = waiting.get("launch_stage_changed_during_plan", 0) + 1
@@ -1017,8 +1168,11 @@ def run_cycle(rpc: watch.Rpc, bindings: Bindings, state: KeeperState, store: Kee
                 waiting[str(error)] = waiting.get(str(error), 0) + 1
         return {"status": "configured_or_armed", "token": token, "configured": should_configure,
                 "processNextSent": processed, "found": found, "pending": len(state.tokens),
+                "checked": len(seen), "planned": planned, "deferred": deferred_count(),
                 "waiting": waiting}
-    return {"status": "waiting", "found": found, "pending": len(state.tokens), "waiting": waiting}
+    return {"status": "waiting", "found": found, "pending": len(state.tokens),
+            "checked": len(seen), "planned": planned, "deferred": deferred_count(),
+            "waiting": waiting}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1032,6 +1186,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--confirmations", type=int, default=3)
     parser.add_argument("--block-span", type=int, default=2000)
+    parser.add_argument("--max-discovery-ranges", type=int, default=2)
+    parser.add_argument("--max-token-checks", type=int, default=12)
+    parser.add_argument("--max-plans-per-cycle", type=int, default=2)
     parser.add_argument("--poll-seconds", type=float, default=10)
     parser.add_argument("--budget-bps", type=int, default=2500)
     parser.add_argument("--utilization-bps", type=int, default=9500)
@@ -1055,7 +1212,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--live requires --once; run live price/exit cycles serially")
     if not args.http_url or not args.chain_id or not args.q or not args.guard:
         parser.error("HTTP URL, chain ID, Q, and guard are required via flags or environment")
-    if (args.confirmations < 1 or args.block_span < 1 or args.poll_seconds <= 0 or
+    if (args.confirmations < 1 or args.block_span < 1 or
+            args.max_discovery_ranges < 1 or args.max_token_checks < 1 or
+            args.max_plans_per_cycle < 1 or
+            args.poll_seconds <= 0 or
             args.max_config_gas < 21000 or args.max_process_gas < 21000 or args.receipt_timeout < 1):
         parser.error("invalid confirmation, span, poll, gas, or receipt setting")
     settings = PlanSettings(args.budget_bps, args.utilization_bps, args.safety_bps,
@@ -1091,7 +1251,9 @@ def main(argv: list[str] | None = None) -> int:
         while True:
             try:
                 result = run_cycle(rpc, bindings, state, store, settings, quotes, signer,
-                                   args.confirmations, args.block_span, not args.no_process_next)
+                                   args.confirmations, args.block_span, not args.no_process_next,
+                                   args.max_token_checks, args.max_discovery_ranges,
+                                   args.max_plans_per_cycle)
             except watch.WatcherError as error:
                 if args.once:
                     raise

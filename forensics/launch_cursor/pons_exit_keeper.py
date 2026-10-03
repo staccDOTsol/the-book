@@ -45,6 +45,8 @@ CONTROLLER = price.selector("controller()")
 SOURCE = price.selector("source()")
 NEXT_ACTION = price.selector("nextAction()")
 EXIT_CONFIGS = price.selector("exitConfigs(address)")
+EXIT_CONFIGURATOR = price.selector("exitConfigurator()")
+OWNER = price.selector("owner()")
 EXIT_CONFIG_TYPES = ["uint128", "uint128", "uint256", "uint256", "uint64"]
 LAUNCH_STATE_TYPES = ["uint8", "bool", "uint64", "uint64", "uint64", "uint64",
                       "uint32", "bool", "bool", "uint64", "uint32", "bool"]
@@ -57,6 +59,13 @@ class ExitError(price.KeeperError):
 class WaitForExit(ExitError):
     pass
 
+
+class ExitConfiguratorLock(price.ConfiguratorLock):
+    """One exit signer journal, independent of the price signer lock."""
+
+    def __init__(self, q: str, state_path: Path):
+        super().__init__(q, state_path)
+        self.path = price.LOCAL / f"pons-exit-configurator-{watch.address(q)[2:]}.lock"
 
 @dataclass(frozen=True)
 class ExitBindings:
@@ -113,7 +122,13 @@ class ExitPlan:
 
 def verify_bindings(rpc: watch.Rpc, chain_id: int, q: str, guard: str, quoter: str,
                     configurator: str | None) -> ExitBindings:
-    bound = price.verify_bindings(rpc, chain_id, q, guard, quoter, configurator, None)
+    bound = price.verify_bindings(rpc, chain_id, q, guard, quoter, None, None)
+    if configurator is not None:
+        owner = price.read_address(rpc, bound.q, OWNER)
+        opening = price.read_address(rpc, bound.q, price.PRICE_CONFIGURATOR)
+        exiting = price.read_address(rpc, bound.q, EXIT_CONFIGURATOR)
+        if configurator != exiting or configurator in (owner, opening):
+            raise ExitError("signing account is not an isolated Q.exitConfigurator")
     inspector = price.read_address(rpc, bound.q, EXIT_NOTIFIER)
     router = price.read_address(rpc, bound.executor, SETTLEMENT_ROUTER)
     active_sale = price.read_address(rpc, router, ACTIVE_SALE)
@@ -704,7 +719,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
     if args.live and not args.once:
-        parser.error("--live requires --once; run live price/exit cycles serially")
+        parser.error("--live requires --once; run via the keeper supervisor")
     if not args.http_url or not args.chain_id or not args.q or not args.guard:
         parser.error("HTTP URL, chain ID, Q, and guard are required")
     if (args.confirmations < 1 or args.block_span < 1 or args.poll_seconds <= 0 or
@@ -716,13 +731,13 @@ def main(argv: list[str] | None = None) -> int:
     settings.validate()
     q, guard = watch.address(args.q), watch.address(args.guard)
     rpc = watch.HttpRpc(args.http_url)
-    private_key = os.environ.get("PONS_PRICE_CONFIGURATOR_PRIVATE_KEY") if args.live else None
+    private_key = os.environ.get("PONS_EXIT_CONFIGURATOR_PRIVATE_KEY") if args.live else None
     if args.live and not private_key:
-        raise ExitError("--live requires PONS_PRICE_CONFIGURATOR_PRIVATE_KEY")
+        raise ExitError("--live requires PONS_EXIT_CONFIGURATOR_PRIVATE_KEY")
     try:
         signer_address = Account.from_key(private_key).address.lower() if private_key else None
     except Exception as exc:
-        raise ExitError("priceConfigurator private key is invalid") from exc
+        raise ExitError("exitConfigurator private key is invalid") from exc
     bindings = verify_bindings(rpc, args.chain_id, q, guard, args.quoter, signer_address)
     quotes = price.ExecutableQuoteProvider(rpc, bindings.price)
     fee_cap, priority_cap = watch.gwei(args.max_fee_gwei), watch.gwei(args.max_priority_gwei)
@@ -732,7 +747,7 @@ def main(argv: list[str] | None = None) -> int:
                          args.max_poke_gas, args.max_config_gas, args.max_process_gas,
                          fee_cap, priority_cap, args.receipt_timeout, args.poll_seconds)
               if private_key else None)
-    with (price.ConfiguratorLock(q, args.state) if signer else nullcontext()), \
+    with (ExitConfiguratorLock(q, args.state) if signer else nullcontext()), \
             price.KeeperStore(args.state) as store:
         state = store.load(rpc, args.chain_id, q, guard, args.start_block)
         if state.pending_tx is not None:

@@ -53,13 +53,43 @@ withdraws at the first *observed* one-sided boundary after range entry.
    minimum outputs and a short deadline bound the swaps. An all-Q exit burns
    Q without a sale or payout.
 
-The watcher, price keeper, and exit keeper have separate durable signed
-transaction journals. The two keepers use the same price-configurator signer;
+The watcher, price keeper, and exit keeper have separate signing accounts,
+nonce streams, and durable signed transaction journals.
 [pons_keeper_supervisor.py](pons_keeper_supervisor.py) runs their live `--once`
-cycles serially so their nonces cannot race, while the owner-signed watcher
-runs independently. [exit_keeper.md](exit_keeper.md) documents startup and
-recovery. No live daemon, deployment, Q launch, LP, or trade is running from
+cycles in independent process slots and services exits first, so a slow or
+unresolved price transaction cannot delay exit inspection. Each signer
+recovers only its own pending transaction. [exit_keeper.md](exit_keeper.md) documents startup and
+recovery. No live trading daemon, deployment, Q launch, LP, or trade is running from
 this prototype.
+
+The staged [Robinhood bootstrap](bootstrap.md) verifies the current Uniswap
+existing-token launch path and returns atomic launch calldata. The
+[fee-arm outcome ledger](fee_outcome_ledger.md) reconciles confirmed receipt
+inputs and separates actual ETH cash from hypothetical value of burned Q. The
+[canonical fee-outcome collector](pons_fee_reporter.md) gathers receipt-backed
+evidence without submitting an onchain score; it currently cannot prove
+complete strategy-paid gas for each position.
+
+## Local status page
+
+Run `python3 forensics/launch_cursor/q_status_dashboard.py` from the repository
+and open `http://127.0.0.1:8767`. This separate, GET-only page reads the
+watcher, price, exit, and supervisor journals directly from ignored `.local`.
+It cannot start a keeper, call an RPC, or submit a transaction. It shows
+cursor blocks, queue or position counts, pending-transaction **flags**, and
+the supervisor's latest heartbeat and separate last successful exit and price
+cycles. It never
+returns signed transaction bodies or keys. The supervisor writes its small,
+mode-`0600` status file atomically as
+`.local/pons-keeper-supervisor-status.json`; its error text comes from a fixed
+safe vocabulary.
+
+Without journals, the page shows unconfigured/undeployed. Saved cursors alone
+only show previous activity. A “live supervisor reported” label requires a
+fresh supervisor heartbeat, recent successful cycles for both exit and price,
+and matching Q/chain/guard bindings in all three component journals. A recovery cycle may
+complete only the keeper that owns a pending signed transaction. The page does not
+independently verify deployment or onchain liveness.
 
 ## Bootstrap and trust boundary
 
@@ -81,17 +111,23 @@ Q/ETH position. The executor must acquire valuable Q separately for X/Q
 pools. A transfer-triggered cursor does not make LP inventory or gas free.
 
 The price configurator is trusted to select admissible ETH-paired Pons
-launches and a fair Q-only band. The onchain depth guard checks liquidity
+launches and a fair Q-only band. The separate exit configurator signs bounded
+withdrawal and settlement plans. The owner, price configurator, and exit
+configurator must use distinct accounts before automatic processing is
+activated. The onchain depth guard checks liquidity
 **at open**, but no spot/depth check guarantees future volume, fee income,
 or recoverable ETH at exit. A third party can initialize a selected pool
 first. Non-ETH Pons pairs are unsupported by these routes. Interim LP fee
 claims are disabled because `previewHarvest` does not provide a reliable
 executable ETH valuation; the final burn collects accrued fees.
 
-Successful exits are currently reported to the fee selector as **censored**:
-the contracts settle assets but do not know comparable ETH-valued net ROI,
-including Q cost basis, burned Q value, and gas. The adaptive selector
-therefore has no valid profitability feedback yet. Owner emergency unwind
+Successful exits with no onchain-comparable return now open a seven-day
+evidence window. The trusted price configurator can submit one receipt-backed
+cash outcome, identified by an evidence hash, or censor the exit after the
+window if its Q acquisition cost and attributable gas remain unprovable.
+No authenticated automatic outcome reporter or real Q cost lots exist yet,
+so the 5–50% selector still has **no profitability calibration**. Burned Q is
+a separate noncash outcome. Owner emergency unwind
 and asset rescue remain recovery paths outside normal burn and payout policy.
 Do not fund the prototype with live assets until deployment, exact recipient
 binding, end-to-end execution, and outcome accounting are verified.
@@ -100,7 +136,7 @@ binding, end-to-end execution, and outcome accounting are verified.
 
 Solc 0.8.26 with optimization and 200 runs produced a 24,048-byte executor
 runtime (528 bytes below EIP-170), a 5,080-byte depth guard, and a
-19,481-byte Q runtime. Recheck size after any change to the executor. Local
+21,776-byte Q runtime (2,800 bytes below EIP-170). Local
 tests cover LIFO scheduling, guarded entry, boundary
 readiness, settlement accounting, and failure paths. Read-only Robinhood
 fork tests cover real v4 mint and burn in both token-address orderings,

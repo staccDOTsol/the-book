@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hookless Q · local status</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#090f19; color:#e8f0f7; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 8% 0%,#193148 0%,transparent 42%),#090f19; }
+    main { max-width:1120px; padding:42px 24px 70px; margin:auto; }
+    .kicker { color:#7eced6; text-transform:uppercase; letter-spacing:.19em; font-size:.73rem; font-weight:750; }
+    h1 { font-size:clamp(2.3rem,5vw,4.2rem); line-height:1.05; margin:13px 0 15px; letter-spacing:-.055em; }
+    h2 { margin:0; font-size:1.05rem; letter-spacing:-.02em; }
+    p { line-height:1.55; }
+    .intro { color:#a7b8c8; max-width:740px; margin:0 0 30px; }
+    .card { background:#111e2bdc; border:1px solid #2c4255; border-radius:18px; box-shadow:0 16px 48px #02081240; padding:22px; }
+    .hero { display:flex; gap:25px; align-items:flex-start; justify-content:space-between; margin-bottom:16px; }
+    .hero p { color:#b8c7d4; max-width:760px; margin:12px 0 0; }
+    .badge { flex-shrink:0; display:inline-flex; align-items:center; padding:8px 13px; border-radius:999px; background:#344351; color:#dce4ed; font-size:.8rem; font-weight:700; letter-spacing:.02em; }
+    .badge.live_reported { color:#a1f1d4; background:#12513f; }
+    .badge.attention { color:#ffd3ba; background:#593221; }
+    .badge.partial,.badge.not_live_verified { color:#f7df9f; background:#594921; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .components { margin-top:16px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+    .card-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
+    .small-badge { border-radius:999px; background:#28394a; padding:5px 10px; color:#b9cad8; font-size:.76rem; font-weight:700; }
+    .small-badge.good { background:#194c42; color:#a4e8d5; }
+    .small-badge.issue { background:#603d28; color:#f6d2aa; }
+    dl { margin:0; display:grid; grid-template-columns:minmax(115px,1fr) minmax(0,1.65fr); column-gap:18px; row-gap:12px; font-size:.9rem; }
+    dt { color:#8ea5b8; } dd { margin:0; text-align:right; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+    .address { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.81rem; }
+    .note { margin-top:17px; color:#91a7b9; font-size:.86rem; }
+    .footer { color:#8298aa; margin-top:22px; font-size:.84rem; }
+    #error { display:none; padding:14px 18px; border-radius:12px; margin-bottom:16px; background:#593221; color:#ffcfb2; }
+    @media (max-width:800px) { .components { grid-template-columns:1fr; } }
+    @media (max-width:650px) { main { padding:28px 16px 46px; } .hero { display:block; } .hero .badge { margin-top:18px; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="kicker">Local operations · read only</div>
+  <h1>Hookless Q watch</h1>
+  <p class="intro">Watcher, price keeper, exit keeper, and supervisor reports from this repository’s private local journals. This page cannot start a keeper or submit a transaction.</p>
+  <div id="error" role="alert"></div>
+  <section class="card hero" aria-labelledby="runtime-heading">
+    <div><h2 id="runtime-heading">Runtime evidence</h2><p id="runtime-detail">Loading local status…</p></div>
+    <span class="badge" id="runtime-state">Loading</span>
+  </section>
+  <div class="grid">
+    <section class="card" aria-labelledby="binding-heading">
+      <div class="card-head"><h2 id="binding-heading">Q configuration</h2><span class="small-badge">Local evidence</span></div>
+      <dl><dt>Q address</dt><dd id="q-address" class="address">—</dd><dt>Chain ID</dt><dd id="chain-id">—</dd><dt>Deployment</dt><dd>Not independently verified</dd><dt>Snapshot</dt><dd id="snapshot-at">—</dd></dl>
+      <p class="note">A saved address or cursor does not prove that a contract is deployed now.</p>
+    </section>
+    <section class="card" aria-labelledby="supervisor-heading">
+      <div class="card-head"><h2 id="supervisor-heading">Supervisor</h2><span class="small-badge" id="supervisor-badge">No report</span></div>
+      <dl><dt>Last heartbeat</dt><dd id="supervisor-updated">—</dd><dt>Watcher process</dt><dd id="watcher-process">—</dd><dt>Exit last completed</dt><dd id="exit-completed-at">—</dd><dt>Price last completed</dt><dd id="price-completed-at">—</dd><dt>Consecutive failures</dt><dd id="failure-count">—</dd><dt>Last issue</dt><dd id="last-issue">—</dd></dl>
+    </section>
+  </div>
+  <div class="components" id="components"></div>
+  <p class="footer">Cursor writes show saved history, not process health. “Live supervisor reported” requires a recent heartbeat and recent successful exit and price cycles. This page makes no RPC calls and never reads signed transaction bodies or keys.</p>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const show = value => value === null || value === undefined || value === '' ? '—' : String(value);
+  const when = value => { if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? '—' : new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',timeZoneName:'short'}).format(d); };
+  const labels = {unconfigured:'Unconfigured / undeployed',partial:'Partly configured',attention:'Needs attention',not_live_verified:'Live status unverified',live_reported:'Live supervisor reported'};
+  const componentNames = {watcher:'Launch watcher',price:'Price keeper',exit:'Exit keeper'};
+  function row(root, label, value, className) {
+    const dt=document.createElement('dt'), dd=document.createElement('dd');
+    dt.textContent=label; dd.textContent=show(value); if(className) dd.className=className;
+    root.append(dt,dd);
+  }
+  function renderComponent(name, data) {
+    const card=document.createElement('section'); card.className='card';
+    const head=document.createElement('div'); head.className='card-head';
+    const title=document.createElement('h2'); title.textContent=componentNames[name];
+    const badge=document.createElement('span'); badge.className='small-badge '+(data.state==='valid'?'good':data.state==='invalid'?'issue':''); badge.textContent=data.state==='valid'?'Journal present':data.state==='missing'?'No journal':'Journal invalid';
+    head.append(title,badge); card.append(head);
+    const list=document.createElement('dl');
+    row(list,'Saved block',data.lastBlock);
+    row(list,'Last journal write',when(data.writtenAt));
+    row(list,'Signed transaction pending',data.pendingTransaction===null?'Unknown':data.pendingTransaction?'Yes':'No');
+    if(name==='price') row(list,'Queued tokens',data.tokenCount);
+    if(name==='exit') row(list,'Active positions',data.activeCount);
+    card.append(list); return card;
+  }
+  function render(data) {
+    const runtime=data.runtime, supervisor=data.supervisor;
+    $('runtime-state').textContent=labels[runtime.state]||'Unknown';
+    $('runtime-state').className='badge '+runtime.state;
+    $('runtime-detail').textContent=runtime.detail;
+    $('q-address').textContent=show(runtime.q);
+    $('chain-id').textContent=show(runtime.chainId);
+    $('snapshot-at').textContent=when(data.generatedAt);
+    $('supervisor-badge').textContent=supervisor.state==='valid'?(supervisor.fresh?show(supervisor.status):'Stale report'):supervisor.state==='missing'?'No report':'Invalid report';
+    $('supervisor-badge').className='small-badge '+(runtime.state==='live_reported'?'good':supervisor.state==='invalid'?'issue':'');
+    $('supervisor-updated').textContent=when(supervisor.updatedAt);
+    $('watcher-process').textContent=show(supervisor.watcherStatus).replaceAll('_',' ');
+    for (const role of ['exit','price']) {
+      const last=supervisor.lastCompletedAtByKeeper[role];
+      $(role+'-completed-at').textContent=last?`${when(last)} · ${supervisor.keeperFresh[role]?'recent':'stale'}`:'Never reported';
+    }
+    $('failure-count').textContent=supervisor.consecutiveFailures===null?'—':`${supervisor.consecutiveFailures} keeper · ${supervisor.watcherConsecutiveFailures} watcher`;
+    $('last-issue').textContent=supervisor.lastError?supervisor.lastError.message:'—';
+    const cards=$('components'); cards.replaceChildren(...Object.entries(data.components).map(([name, component])=>renderComponent(name,component)));
+  }
+  async function refresh() {
+    try { const response=await fetch('/api/status',{cache:'no-store'}); if(!response.ok) throw new Error('Status request failed'); render(await response.json()); $('error').style.display='none'; }
+    catch { $('error').textContent='Local status could not be loaded. The dashboard server may have stopped.'; $('error').style.display='block'; }
+  }
+  refresh(); setInterval(refresh,5000);
+</script>
+</body>
+</html>

@@ -7,7 +7,7 @@ pragma solidity ^0.8.26;
 /// the returned fee to every open retry for that launch token.
 /// @dev Fees are v4 pips (1,000,000 = 100%). The 46 arms are 5%, 6%, ...,
 /// 50%. A fixed 15% exploration probability samples a random arm; otherwise
-/// the arm with the highest mean realized net return is used. Selection has
+/// the arm with the highest mean recorded cash return is used. Selection has
 /// a fixed upper bound of 46 arm reads and never scans launches or positions.
 /// No-trade and stuck observations are censored and excluded from that mean.
 /// Launch tokens differ in flow, liquidity, and volatility, so historical arm
@@ -97,11 +97,12 @@ contract StaticNextPoolFee {
 
     /// @notice Feed back one completed position after the executor has
     /// removed liquidity, settled balances, and collected fees. The trusted
-    /// controller computes net return in basis points of entry value, using
-    /// the same valuation rule for every pool and including execution costs.
-    /// An outcome above +/-100% must be clipped before reporting. A call made
-    /// before a successful exit would corrupt learning and violates the
-    /// controller's integration contract.
+    /// controller/reporter computes the return in basis points of traceable
+    /// actual ETH acquisition cost for the Q deployed at open: realized
+    /// recipient ETH/WETH minus that Q cost and strategy-paid gas. Burned Q
+    /// is a separate noncash supply metric. A zero/untraceable Q cost leaves
+    /// the exit censored. An outcome above +/-100% must be clipped before
+    /// reporting. A call before a successful exit corrupts learning.
     function recordClosed(address token, int32 netReturnBps) external onlyController {
         Assignment storage assignment = assignments[token];
         if (assignment.status != Status.Selected) revert NotSelected();

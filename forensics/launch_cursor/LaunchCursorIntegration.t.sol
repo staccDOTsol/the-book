@@ -10,6 +10,11 @@ import {
 import {PositionInspector} from "./PositionInspector.sol";
 import {StaticNextPoolFee} from "./StaticNextPoolFee.sol";
 
+interface VmOutcome {
+    function warp(uint256) external;
+    function prank(address) external;
+}
+
 contract MockLaunchFactory {
     mapping(address => uint8) public phase;
 
@@ -98,6 +103,7 @@ contract MockCursorExecutor {
 
 contract LaunchCursorIntegrationTest {
     address private constant X = address(0xBEEF);
+    VmOutcome private constant vm = VmOutcome(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     MockLaunchFactory private factory;
     MockCursorExecutor private executor;
@@ -116,6 +122,50 @@ contract LaunchCursorIntegrationTest {
         );
         executor.bind(address(quote));
         inspector.bindCursor(address(quote));
+    }
+
+    function testExitSignerCannotShareOwnerOrPriceNonce() external {
+        address opening = address(0xA11CE);
+        address exiting = address(0xE417);
+        quote.setAutomatic(false);
+        (bool prematureActivation,) = address(quote).call(abi.encodeCall(quote.setAutomatic, (true)));
+        require(!prematureActivation, "shared default roles activated");
+        quote.setPriceConfigurator(opening);
+        (bool sameOwner,) = address(quote).call(
+            abi.encodeCall(quote.setExitConfigurator, (address(this)))
+        );
+        require(!sameOwner, "owner signer accepted as exit signer");
+        (bool samePrice,) = address(quote).call(
+            abi.encodeCall(quote.setExitConfigurator, (opening))
+        );
+        require(!samePrice, "price signer accepted as exit signer");
+        quote.setExitConfigurator(exiting);
+        require(quote.exitConfigurator() == exiting, "exit signer not assigned");
+        (bool setPriceToExit,) = address(quote).call(
+            abi.encodeCall(quote.setPriceConfigurator, (exiting))
+        );
+        require(!setPriceToExit, "exit signer accepted as price signer");
+        quote.setAutomatic(true);
+        (bool setPriceToOwner,) = address(quote).call(
+            abi.encodeCall(quote.setPriceConfigurator, (address(this)))
+        );
+        require(!setPriceToOwner, "live owner signer accepted as price signer");
+        ILaunchCursorExitConfigurator.ExitConfig memory config = ILaunchCursorExitConfigurator.ExitConfig({
+            minTokenOut: 1, minQuoteOut: 0, minEthOut: 1, minQOut: 1,
+            deadline: uint64(block.timestamp + 60)
+        });
+        vm.prank(opening);
+        (bool priceCanExit, bytes memory priceError) = address(quote).call(
+            abi.encodeCall(quote.configureExit, (X, config))
+        );
+        require(!priceCanExit && bytes4(priceError) == LaunchCursorToken.NotExitConfigurator.selector,
+            "price signer configured exit");
+        vm.prank(exiting);
+        (bool exitReachedStage, bytes memory stageError) = address(quote).call(
+            abi.encodeCall(quote.configureExit, (X, config))
+        );
+        require(!exitReachedStage && bytes4(stageError) == LaunchCursorToken.BadLaunch.selector,
+            "exit signer failed role check");
     }
 
     function _armAndOpen() private {
@@ -199,7 +249,7 @@ contract LaunchCursorIntegrationTest {
         require(entered && exitReady, "quote-side return not queued");
     }
 
-    function testUnvaluedQuoteExitIsCensored() external {
+    function _unvaluedExit() private returns (uint64 deadline) {
         _armAndOpen();
         executor.setState(true, false, false);
         inspector.poke(X);
@@ -212,10 +262,67 @@ contract LaunchCursorIntegrationTest {
         require(attempted && succeeded && !executor.active(), "unvalued exit did not finish");
         (LaunchCursorToken.Stage stage,,,,,,,,,,,) = quote.launches(X);
         require(stage == LaunchCursorToken.Stage.Exited, "launch did not exit");
+        deadline = quote.outcomeDeadline(X);
+        require(deadline == block.timestamp + quote.OUTCOME_REPORT_WINDOW(), "wrong evidence window");
         (,, StaticNextPoolFee.Status status) = quote.feePolicy().assignments(X);
-        require(status == StaticNextPoolFee.Status.Censored, "unvalued exit entered fee mean");
-        require(quote.feePolicy().totalClosed() == 0 && quote.feePolicy().totalCensored() == 1,
-            "wrong feedback counts");
+        require(status == StaticNextPoolFee.Status.Selected, "unvalued exit prematurely scored");
+        require(quote.feePolicy().totalClosed() == 0 && quote.feePolicy().totalCensored() == 0,
+            "pending exit affected feedback counts");
+    }
+
+    function testUnvaluedExitCanReportOneReceiptBackedOutcome() external {
+        _unvaluedExit();
+        bytes32 evidence = keccak256("synthetic receipt-backed cash evidence");
+        quote.reportExitedOutcome(X, -2_000, evidence);
+        (,, StaticNextPoolFee.Status status) = quote.feePolicy().assignments(X);
+        require(status == StaticNextPoolFee.Status.Closed, "reported exit not closed");
+        require(quote.outcomeDeadline(X) == 0, "pending deadline not cleared");
+        (uint64 closed,, int128 sum) = quote.feePolicy().armStats(
+            uint8((executor.openedFee() - 50_000) / 10_000)
+        );
+        require(closed == 1 && sum == -2_000, "wrong cash return stored");
+        try quote.reportExitedOutcome(X, 1, evidence) {
+            revert("repeat outcome accepted");
+        } catch {}
+    }
+
+    function testUnvaluedExitRejectsUnauthorizedOrUnsupportedReport() external {
+        _unvaluedExit();
+        bytes32 evidence = keccak256("synthetic evidence");
+        vm.prank(address(0xBAD));
+        try quote.reportExitedOutcome(X, 100, evidence) {
+            revert("unauthorized report accepted");
+        } catch {}
+        try quote.reportExitedOutcome(X, 100, bytes32(0)) {
+            revert("zero evidence hash accepted");
+        } catch {}
+        try quote.reportExitedOutcome(X, 10_001, evidence) {
+            revert("out-of-range return accepted");
+        } catch {}
+        require(quote.outcomeDeadline(X) != 0, "rejected report cleared pending exit");
+    }
+
+    function testUnvaluedExitCensorsOnlyAfterFixedHorizon() external {
+        uint64 deadline = _unvaluedExit();
+        try quote.censorExpiredOutcome(X) {
+            revert("early censor accepted");
+        } catch {}
+        vm.warp(deadline - 1);
+        try quote.censorExpiredOutcome(X) {
+            revert("pre-deadline censor accepted");
+        } catch {}
+        vm.warp(deadline);
+        try quote.reportExitedOutcome(X, 100, keccak256("late evidence")) {
+            revert("late report accepted");
+        } catch {}
+        quote.censorExpiredOutcome(X);
+        (,, StaticNextPoolFee.Status status) = quote.feePolicy().assignments(X);
+        require(status == StaticNextPoolFee.Status.Censored, "expired outcome not censored");
+        require(quote.feePolicy().totalCensored() == 1, "wrong censored count");
+        require(quote.outcomeDeadline(X) == 0, "expired deadline not cleared");
+        try quote.censorExpiredOutcome(X) {
+            revert("repeat censor accepted");
+        } catch {}
     }
 
     function testEmergencyAbortRemovesStaleExitAndCensorsFee() external {

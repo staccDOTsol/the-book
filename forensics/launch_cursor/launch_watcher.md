@@ -36,6 +36,12 @@ Set these process environment variables at runtime:
 The shared HTTP transport sends an explicit client User-Agent. Robinhood's
 public RPC returned HTTP 403 to Python-urllib's default User-Agent in a
 read-only smoke check; `eth_chainId` succeeded with the explicit identifier.
+The `PONS_WS_RPC_URL` endpoint must implement JSON-RPC `eth_subscribe` for
+logs. Robinhood's public sequencer feed is a different protocol; its
+[connection guide](https://docs.robinhood.com/chain/connecting/) lists a
+keyed provider WebSocket for JSON-RPC subscriptions and warns that the public
+HTTP RPC is rate-limited. HTTP backfill remains authoritative after any
+WebSocket gap.
 
 For the first run, choose `--start-block` at or before the earliest Pons launch
 that Q should receive. It is inclusive. The flag is mandatory when the cursor

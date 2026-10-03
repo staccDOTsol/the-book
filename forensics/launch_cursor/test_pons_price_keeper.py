@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -25,6 +26,10 @@ VIEW = "0x" + "66" * 20
 HOOK = "0x" + "77" * 20
 CURVE = "0x" + "88" * 20
 POOL_ID = "0x" + "ab" * 32
+
+
+def token(number: int) -> str:
+    return "0x" + f"{number:040x}"
 
 
 def bindings(q=Q_LOW):
@@ -318,6 +323,161 @@ class KeeperTests(unittest.TestCase):
         with self.assertRaisesRegex(keeper.KeeperError, "cursor block hash changed"):
             keeper.discover_launches(rpc, state, FakeStore(), 2, 100)
 
+    def test_discovery_caps_ranges_and_resumes_with_reorg_check(self):
+        later = token(100)
+        rpc = LogRpc([log(11, X), log(21, later)], head=32)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
+        store = FakeStore()
+        self.assertEqual(keeper.discover_launches(rpc, state, store, 2, 5, 1), 1)
+        self.assertEqual(state.last_block, 15)
+        self.assertEqual(state.tokens, [X])
+        self.assertEqual(len([call for call in rpc.calls if call[0] == "eth_getLogs"]), 1)
+        rpc.reorg[15] = "0x" + "ff" * 32
+        with self.assertRaisesRegex(keeper.KeeperError, "cursor block hash changed"):
+            keeper.discover_launches(rpc, state, store, 2, 5, 1)
+        self.assertEqual(state.last_block, 15)
+        rpc.reorg.clear()
+        keeper.discover_launches(rpc, state, store, 2, 5, 1)
+        self.assertEqual(state.last_block, 20)
+        keeper.discover_launches(rpc, state, store, 2, 5, 1)
+        self.assertIn(later, state.tokens)
+
+    def test_reorg_during_range_does_not_stage_uncommitted_tokens(self):
+        class ReorgRpc(LogRpc):
+            def __init__(self):
+                super().__init__([log(11, X)], head=14)
+                self.tip_hash_reads = 0
+            def call(self, method, params):
+                if method == "eth_getBlockByNumber" and params[0] == hex(12):
+                    self.tip_hash_reads += 1
+                    if self.tip_hash_reads == 3:
+                        return {"hash": "0x" + "ff" * 32}
+                return super().call(method, params)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
+        with self.assertRaisesRegex(keeper.KeeperError, "range changed"):
+            keeper.discover_launches(ReorgRpc(), state, FakeStore(), 2, 10, 1)
+        self.assertEqual(state.last_block, 10)
+        self.assertEqual(state.tokens, [])
+        self.assertEqual(state.priority_tokens, [])
+
+    def test_dense_discovery_splits_range_and_bounds_priority_membership(self):
+        events = [log(11 + index // 40, token(index + 1)) for index in range(160)]
+        rpc = LogRpc(events, head=16)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
+        self.assertEqual(keeper.discover_launches(rpc, state, FakeStore(), 1, 4, 1), 80)
+        self.assertEqual(state.last_block, 12)
+        self.assertEqual(len(state.tokens), 80)
+        self.assertEqual(len(state.priority_tokens), keeper.MAX_PRIORITY_TOKENS)
+        ranges = [(int(call[1][0]["fromBlock"], 16), int(call[1][0]["toBlock"], 16))
+                  for call in rpc.calls if call[0] == "eth_getLogs"]
+        self.assertEqual(ranges, [(11, 14), (11, 12)])
+        state.schedule_round = keeper.PRIORITY_ROUNDS
+        self.assertTrue(keeper._expire_priority(state))
+        self.assertEqual(state.priority_tokens, [])
+        self.assertEqual(len(state.tokens), 80)
+
+    def test_single_overfull_block_never_advances_cursor(self):
+        events = [log(11, token(index + 1)) for index in range(keeper.MAX_DISCOVERY_LOGS + 1)]
+        rpc = LogRpc(events, head=12)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", [])
+        with self.assertRaisesRegex(keeper.KeeperError, "single launch block"):
+            keeper.discover_launches(rpc, state, FakeStore(), 1, 1, 1)
+        self.assertEqual(state.last_block, 10)
+        self.assertEqual(state.tokens, [])
+
+    def test_token_check_budget_defers_backlog_without_repeating_in_cycle(self):
+        tokens = [token(index) for index in range(1, 21)]
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", tokens)
+        seen = []
+        def stage(_rpc, _q, candidate, *_args):
+            seen.append(candidate)
+            return 0, False
+        with patch.object(keeper, "q_launch_state", side_effect=stage):
+            result = keeper.run_cycle(LogRpc(head=12), bindings(), state, FakeStore(),
+                                      keeper.PlanSettings(), object(), None,
+                                      2, 100, True, 3, 1)
+        self.assertEqual(result["checked"], 3)
+        self.assertEqual(result["deferred"], 17)
+        self.assertEqual(len(seen), 3)
+        self.assertEqual(len(set(seen)), 3)
+
+    def test_expensive_plan_budget_caps_ready_backlog(self):
+        tokens = [token(index) for index in range(1, 11)]
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}", tokens)
+        with patch.object(keeper, "q_launch_state", return_value=(1, False)) as stages, \
+             patch.object(keeper, "make_plan",
+                          side_effect=keeper.WaitForPrice("temporary quote wait")) as plans:
+            result = keeper.run_cycle(LogRpc(head=12), bindings(), state, FakeStore(),
+                                      keeper.PlanSettings(), object(), None,
+                                      2, 100, True, 5, 1, 2)
+        self.assertEqual(stages.call_count, 5)
+        self.assertEqual(plans.call_count, 2)
+        self.assertEqual(result["planned"], 2)
+        self.assertEqual(result["waiting"]["plan_budget_deferred"], 3)
+
+    def test_fresh_launch_waits_in_priority_for_owner_enqueue(self):
+        fresh = token(901)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}",
+                                   [fresh], priority_tokens=[fresh],
+                                   priority_expires={fresh: keeper.PRIORITY_ROUNDS})
+        rpc = LogRpc(head=12)
+        plan = keeper.OpenPlan(fresh, 1, 1, 1, 60, 0, 60, 100,
+                               1, 1, 1, True)
+        with patch.object(keeper, "q_launch_state", return_value=(0, False)):
+            first = keeper.run_cycle(rpc, bindings(), state, FakeStore(),
+                                     keeper.PlanSettings(), object(), None,
+                                     2, 100, True, 1, 1)
+        self.assertEqual(first["waiting"]["not_enqueued_yet"], 1)
+        self.assertIn(fresh, state.priority_tokens)
+        with patch.object(keeper, "q_launch_state", return_value=(1, False)), \
+             patch.object(keeper, "make_plan", return_value=plan):
+            second = keeper.run_cycle(rpc, bindings(), state, FakeStore(),
+                                      keeper.PlanSettings(), object(), None,
+                                      2, 100, True, 1, 1)
+        self.assertEqual(second["status"], "planned_read_only")
+        self.assertEqual(second["plan"]["token"], fresh)
+
+    def test_priority_action_cannot_starve_background_with_one_check_budget(self):
+        tokens = [token(index) for index in range(1, 31)]
+        hot = tokens[-1]
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}",
+                                   tokens, priority_tokens=[hot],
+                                   priority_expires={hot: keeper.PRIORITY_ROUNDS})
+        rpc = LogRpc(head=12)
+        calls = []
+        plan = keeper.OpenPlan(hot, 1, 1, 1, 60, 0, 60, 100,
+                               1, 1, 1, True)
+        def stage(_rpc, _q, candidate, *_args):
+            calls.append(candidate)
+            return (1, False) if candidate == hot else (0, False)
+        with patch.object(keeper, "q_launch_state", side_effect=stage), \
+             patch.object(keeper, "make_plan", return_value=plan):
+            for _ in range(3 * len(tokens) + 10):
+                before = len(calls)
+                result = keeper.run_cycle(rpc, bindings(), state, FakeStore(),
+                                          keeper.PlanSettings(), object(), None,
+                                          2, 100, True, 1, 1)
+                self.assertEqual(result["checked"], 1)
+                self.assertEqual(len(calls) - before, 1)
+        self.assertEqual(calls[:2], [hot, hot])
+        self.assertTrue(set(tokens).issubset(calls))
+        self.assertLessEqual(len(state.priority_tokens), keeper.MAX_PRIORITY_TOKENS)
+
+    def test_terminal_removal_preserves_both_schedule_cursors(self):
+        a, b, c = token(1), token(2), token(3)
+        state = keeper.KeeperState(1, Q_LOW, GUARD, 10, "0x" + f"{10:064x}",
+                                   [a, b, c], priority_tokens=[b, c],
+                                   scan_cursor=2, priority_cursor=1,
+                                   priority_expires={b: 9, c: 9})
+        keeper._remove_pending_token(state, b)
+        self.assertEqual((state.tokens, state.priority_tokens,
+                          state.scan_cursor, state.priority_cursor),
+                         ([a, c], [c], 1, 0))
+        keeper._remove_pending_token(state, c)
+        self.assertEqual((state.tokens, state.priority_tokens,
+                          state.scan_cursor, state.priority_cursor),
+                         ([a], [], 0, 0))
+
     def test_selector_restriction_and_pending_raw_tx_recovery(self):
         account = keeper.Account.from_key("0x" + "01" * 32)
         class Rpc:
@@ -373,11 +533,26 @@ class KeeperTests(unittest.TestCase):
             with keeper.KeeperStore(path) as store:
                 state = store.load(rpc, 1, Q_LOW, GUARD, 11)
                 state.tokens.append(X)
+                state.priority_tokens.append(X)
+                state.priority_expires[X] = 16
+                state.schedule_round = 7
                 store.save(state)
             with keeper.KeeperStore(path) as store:
                 restored = store.load(rpc, 1, Q_LOW, GUARD, None)
             self.assertEqual(restored.tokens, [X])
+            self.assertEqual(restored.priority_tokens, [X])
+            self.assertEqual(restored.priority_expires, {X: 16})
+            self.assertEqual(restored.schedule_round, 7)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            legacy = restored.json()
+            for field_name in ("priorityTokens", "priorityExpires", "scanCursor",
+                               "priorityCursor", "scheduleRound"):
+                legacy.pop(field_name)
+            path.write_text(json.dumps(legacy))
+            with keeper.KeeperStore(path) as store:
+                migrated = store.load(rpc, 1, Q_LOW, GUARD, None)
+            self.assertEqual(migrated.tokens, [X])
+            self.assertEqual(migrated.priority_tokens, [])
         finally:
             path.unlink(missing_ok=True)
             path.with_suffix(path.suffix + ".lock").unlink(missing_ok=True)

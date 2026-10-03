@@ -38,8 +38,9 @@ interface IPonsV2LaunchFactoryCursor {
 interface ILaunchCursorExecutor {
     function open(address launchToken, uint24 feePips) external;
     /// @notice Must finish LP withdrawal, liquidation, burns, and payouts.
-    /// A completed but unvalued exit must be censored by the fee selector,
-    /// rather than reported as an invented net return.
+    /// A completed but unvalued exit remains pending for receipt-backed cash
+    /// accounting, then is censored after the fixed reporting window if no
+    /// comparable return can be proved.
     function exit(address launchToken) external returns (int32 netReturnBps, bool comparable);
     /// @notice Return claimable fees expressed as gross ETH value and the gas
     /// units expected for this cursor's whole harvest transaction.
@@ -203,6 +204,7 @@ contract LaunchCursorToken is CursorERC20 {
 
     address public immutable owner;
     address public priceConfigurator;
+    address public exitConfigurator;
     IPonsV2LaunchFactoryCursor public immutable ponsFactory;
     ILaunchCursorExecutor public immutable executor;
     StaticNextPoolFee public immutable feePolicy;
@@ -214,6 +216,7 @@ contract LaunchCursorToken is CursorERC20 {
     uint256 private constant TRANSFER_STEP_OVERHEAD = 180_000;
     uint256 private constant OUTER_TRANSFER_GAS_RESERVE = 50_000;
     uint256 private constant HARVEST_GAS_VALUE_MULTIPLIER = 2;
+    uint64 public constant OUTCOME_REPORT_WINDOW = 7 days;
     uint256 public constant INITIAL_SUPPLY = 1_000_000_000 ether;
     uint32 public transferStepGasLimit;
     uint256 public harvestGasPriceCeilingWei;
@@ -224,6 +227,9 @@ contract LaunchCursorToken is CursorERC20 {
     Step private _processingStep;
 
     mapping(address => Launch) public launches;
+    /// @notice Unvalued exits await receipt-backed cash accounting until this
+    /// timestamp. Zero means no outcome is pending or it was finalized.
+    mapping(address => uint64) public outcomeDeadline;
     mapping(address => PendingReport) private _pendingByToken;
     mapping(address => bool) public internalEndpoint;
 
@@ -257,6 +263,7 @@ contract LaunchCursorToken is CursorERC20 {
     event LaunchAborted(address indexed token, uint256 tokenRecovered, uint256 quoteRecovered);
     event HeldAssetRescued(address indexed token, uint256 amount);
     event PriceConfiguratorSet(address indexed configurator);
+    event ExitConfiguratorSet(address indexed configurator);
     event OpenPriceConfigured(address indexed token, uint160 sqrtPriceX96, uint128 maxQuoteIn);
     event ExitBoundConfigured(
         address indexed token, uint128 minTokenOut, uint128 minQuoteOut,
@@ -267,14 +274,19 @@ contract LaunchCursorToken is CursorERC20 {
     event AutomaticSet(bool enabled);
     event TransferStepGasLimitSet(uint32 gasLimit);
     event HarvestGasPriceCeilingSet(uint256 gasPriceWei);
+    event FeeOutcomePending(address indexed token, uint64 deadline);
+    event FeeOutcomeReported(address indexed token, int32 netReturnBps, bytes32 evidenceHash);
+    event FeeOutcomeCensored(address indexed token);
 
     error NotOwner();
     error NotPriceConfigurator();
+    error NotExitConfigurator();
     error Busy();
     error BadLaunch();
     error AlreadyEnqueued();
     error BadConfiguration();
     error NotNotifier();
+    error BadOutcome();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -283,6 +295,11 @@ contract LaunchCursorToken is CursorERC20 {
 
     modifier onlyPriceConfigurator() {
         if (msg.sender != priceConfigurator) revert NotPriceConfigurator();
+        _;
+    }
+
+    modifier onlyExitConfigurator() {
+        if (msg.sender != exitConfigurator) revert NotExitConfigurator();
         _;
     }
 
@@ -317,6 +334,7 @@ contract LaunchCursorToken is CursorERC20 {
         ) revert BadConfiguration();
         owner = msg.sender;
         priceConfigurator = msg.sender;
+        exitConfigurator = msg.sender;
         ponsFactory = IPonsV2LaunchFactoryCursor(factory_);
         executor = ILaunchCursorExecutor(executor_);
         feePolicy = new StaticNextPoolFee(address(this));
@@ -394,9 +412,23 @@ contract LaunchCursorToken is CursorERC20 {
     /// @notice A separate automated price keeper may be assigned this role.
     /// The owner-controlled launch watcher can continue to write only enqueue.
     function setPriceConfigurator(address configurator) external onlyOwner whenIdle {
-        if (configurator == address(0)) revert BadConfiguration();
+        if (configurator == address(0) ||
+            (automaticEnabled && configurator == owner) ||
+            (exitConfigurator != owner && configurator == exitConfigurator)) {
+            revert BadConfiguration();
+        }
         priceConfigurator = configurator;
         emit PriceConfiguratorSet(configurator);
+    }
+
+    /// @notice The exit signer has its own nonce stream, independent of the
+    /// owner watcher and opening price keeper. Fund it separately for gas.
+    function setExitConfigurator(address configurator) external onlyOwner whenIdle {
+        if (configurator == address(0) || configurator == owner || configurator == priceConfigurator) {
+            revert BadConfiguration();
+        }
+        exitConfigurator = configurator;
+        emit ExitConfiguratorSet(configurator);
     }
 
     /// @notice Commits a short-lived price, ticks, liquidity and spend cap.
@@ -418,7 +450,7 @@ contract LaunchCursorToken is CursorERC20 {
     /// @notice Commit short-lived LP and swap minima for a queued boundary
     /// exit. The executor verifies the live one-sided boundary on execution.
     function configureExit(address token, ILaunchCursorExitConfigurator.ExitConfig calldata config)
-        external onlyPriceConfigurator whenIdle
+        external onlyExitConfigurator whenIdle
     {
         Launch storage launch = launches[token];
         if (launch.stage != Stage.Active || !launch.exitReady) revert BadLaunch();
@@ -427,6 +459,42 @@ contract LaunchCursorToken is CursorERC20 {
             token, config.minTokenOut, config.minQuoteOut,
             config.minEthOut, config.minQOut, config.deadline
         );
+    }
+
+    /// @notice Record a receipt-backed cash return for an already completed
+    /// exit. The price-configurator signer is trusted to verify the Q
+    /// acquisition lots, recipient payout, and strategy-paid gas in the
+    /// evidence identified by `evidenceHash`. The burn is a separate noncash
+    /// outcome. This contract cannot verify historical offchain accounting.
+    function reportExitedOutcome(address token, int32 netReturnBps, bytes32 evidenceHash)
+        external onlyPriceConfigurator whenIdle
+    {
+        uint64 deadline = outcomeDeadline[token];
+        if (
+            launches[token].stage != Stage.Exited || deadline == 0 ||
+            block.timestamp >= deadline || evidenceHash == bytes32(0)
+        ) revert BadOutcome();
+        (,, StaticNextPoolFee.Status status) = feePolicy.assignments(token);
+        if (status != StaticNextPoolFee.Status.Selected) revert BadOutcome();
+        feePolicy.recordClosed(token, netReturnBps);
+        delete outcomeDeadline[token];
+        emit FeeOutcomeReported(token, netReturnBps, evidenceHash);
+    }
+
+    /// @notice After the fixed evidence window, finalize a completed exit
+    /// whose actual Q cost basis or attributable gas could not be proven.
+    /// It remains counted as censored, never as a zero-return closed pool.
+    function censorExpiredOutcome(address token) external onlyPriceConfigurator whenIdle {
+        uint64 deadline = outcomeDeadline[token];
+        if (
+            launches[token].stage != Stage.Exited || deadline == 0 ||
+            block.timestamp < deadline
+        ) revert BadOutcome();
+        (,, StaticNextPoolFee.Status status) = feePolicy.assignments(token);
+        if (status != StaticNextPoolFee.Status.Selected) revert BadOutcome();
+        feePolicy.recordCensored(token, StaticNextPoolFee.CensorReason.UnvaluedExit);
+        delete outcomeDeadline[token];
+        emit FeeOutcomeCensored(token);
     }
 
     /// @notice The authenticated position inspector reports that the open
@@ -523,6 +591,10 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     function setAutomatic(bool enabled) external onlyOwner whenIdle {
+        if (enabled &&
+            (priceConfigurator == owner || exitConfigurator == owner || priceConfigurator == exitConfigurator)) {
+            revert BadConfiguration();
+        }
         automaticEnabled = enabled;
         emit AutomaticSet(enabled);
     }
@@ -729,7 +801,9 @@ contract LaunchCursorToken is CursorERC20 {
                     if (netReturnBps < -10_000) netReturnBps = -10_000;
                     feePolicy.recordClosed(token, netReturnBps);
                 } else {
-                    feePolicy.recordCensored(token, StaticNextPoolFee.CensorReason.UnvaluedExit);
+                    uint64 deadline = uint64(block.timestamp) + OUTCOME_REPORT_WINDOW;
+                    outcomeDeadline[token] = deadline;
+                    emit FeeOutcomePending(token, deadline);
                 }
             }
             _onSuccess(token, step, source);

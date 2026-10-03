@@ -84,6 +84,30 @@ depth guard's source, spot guard, settlement router, Q, Pons factory, v4
 Quoter, and haircut must match the planner. The executor requotes full-band
 exposure in the open transaction.
 
+Each cycle checks at most **12 pending tokens**, builds at most **two full
+price plans**, and commits at most **two
+confirmed log ranges** by default. Dense log ranges are split before more
+than 128 launch logs receive individual canonical-block checks; each range
+has a 16-request split limit. The
+`--max-token-checks`, `--max-plans-per-cycle`, and
+`--max-discovery-ranges` flags adjust the cycle work
+limits. A single block with more than 128 matching launches stops for
+operator review rather than advancing an incomplete cursor. The response
+reports `checked`, `planned`, `deferred`, and total `pending` counts; waiting reasons
+cover only tokens checked in that cycle.
+
+New launches and queued candidates enter a priority lane capped at 64 tokens
+for up to nine keeper cycles. A fresh launch stays there while its owner-signed
+`enqueue` is still unconfirmed; known phase-1 or unfunded conditions are
+demoted to the background lane. Priority membership expires
+even if a token is not checked, while a separate persistent round-robin
+cursor checks the entire pending queue. Every third cycle starts with that
+background lane, so an immediately actionable priority token cannot prevent
+older tokens from being revisited. Both cursors, the priority window, and
+the cycle phase are stored in the existing mode-`0600` state journal and
+survive restarts. Older journals without these scheduler fields load with an
+empty priority lane.
+
 The state file and lock are inside ignored `.local`, never `/tmp`. The file
 is mode `0600` and atomically replaced with fsync. It contains the
 confirmed-block cursor, discovered token queue, and any pending signed raw
@@ -94,10 +118,12 @@ payload, gas and fee caps before rebroadcasting an unknown transaction. A
 stale unknown configuration or an ambiguous consumed nonce stops for
 operator review. A confirmed reverted configuration leaves the token pending
 for a fresh plan. A committed-block reorg stops the keeper for reconciliation.
-The price and exit keepers share one configurator signer and a per-Q `.local`
-lock. Run their `--once --live` cycles serially; simultaneous continuous live
-processes fail closed. The lock records which state file owns a pending signed
-transaction after a crash, so another keeper cannot take its nonce.
+The price and exit keepers use distinct configurator signers, nonce streams,
+state files, and `.local` locks. The supervisor services their `--once --live`
+cycles in independent subprocess slots, prioritizing exit checks. Each lock
+prevents two processes for the same signer from taking its nonce and records
+that signer's pending transaction across restarts. The owner watcher uses a
+third account.
 
 ## Limits
 

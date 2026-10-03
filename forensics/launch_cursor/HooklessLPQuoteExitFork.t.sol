@@ -92,7 +92,8 @@ contract HooklessLPQuoteExitForkTest {
         require(q.totalSupply() < supplyBefore, "no recovered Q burned");
         require(x.balanceOf(address(executor)) == 0, "X left in vault");
         (,, StaticNextPoolFee.Status status) = q.feePolicy().assignments(address(x));
-        require(status == StaticNextPoolFee.Status.Censored, "unvalued exit was scored");
+        require(status == StaticNextPoolFee.Status.Selected && q.outcomeDeadline(address(x)) != 0,
+            "unvalued exit not pending");
         bool stillActive;
         try executor.inspect(address(x)) returns (uint160, bool, bool, bool, bool) {
             stillActive = true;
@@ -145,7 +146,7 @@ contract HooklessLPQuoteExitForkTest {
         require(address(opposite) != address(0), "opposite ordering unavailable");
         _open(opposite, executor, q);
         _exitAndAssert(opposite, executor, inspector, q);
-        require(q.feePolicy().totalClosed() == 0 && q.feePolicy().totalCensored() == 2,
+        require(q.feePolicy().totalClosed() == 0 && q.feePolicy().totalCensored() == 0,
             "wrong feedback totals");
     }
 }
