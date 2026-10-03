@@ -433,7 +433,8 @@ contract PonsBootstrap {
         _requireNonzero(operator, "operator");
         if (address(ex).code.length == 0 || address(ins).code.length == 0 || address(q).code.length == 0 ||
             ex.owner() != operator || q.owner() != operator ||
-            q.decimals() != 18 || q.INITIAL_SUPPLY() != SUPPLY || q.OPEN_MINT_BPS() != 100 ||
+            q.decimals() != 18 || q.INITIAL_SUPPLY() != SUPPLY ||
+            q.TOTAL_SUPPLY_CEILING() != 10 * SUPPLY || q.OPEN_MINT_BPS() != 10 ||
             ex.controller() != address(q) || ex.quoteToken() != address(q) ||
             address(ex.positionManager()) != POSITION_MANAGER || address(ex.stateView()) != STATE_VIEW ||
             address(ex.permit2()) != PERMIT2 || ex.poolManager() != POOL_MANAGER ||

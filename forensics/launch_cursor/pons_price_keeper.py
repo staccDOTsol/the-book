@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Deterministic three-band X/Q planner for authenticated Pons launches.
 
-Each band is funded by a separate new 1%-of-supply Q mint. The price scale
-comes from that first mint and X's total supply; the range multiplier comes
-from the Pons curve's phantom reserve and graduation threshold. No external
-X/ETH or Q/ETH price is used. Live configureOpen/processNext writes are opt-in.
+Each band is funded by a separate new 0.1%-of-supply Q mint. The price scale
+uses a separate 1%-of-supply reference amount and X's total supply; the range
+multiplier comes from the Pons curve's phantom reserve and graduation
+threshold. No external X/ETH or Q/ETH price is used. Live
+configureOpen/processNext writes are opt-in.
 """
 
 from __future__ import annotations
@@ -44,6 +45,9 @@ ZERO = "0x" + "00" * 20
 Q96 = 1 << 96
 Q192 = 1 << 192
 MAX_UINT128 = (1 << 128) - 1
+MINT_BPS = 10
+PRICE_REFERENCE_BPS = 100
+BPS_DENOMINATOR = 10_000
 MIN_TICK = -887272
 MAX_TICK = 887272
 MIN_SQRT = 4295128739
@@ -76,6 +80,7 @@ CURVE_GRADUATION_THRESHOLD = "0x" + keccak(text="graduationThreshold()")[:4].hex
 CURVE_REAL_QUOTE = "0x" + keccak(text="realQuoteReserve()")[:4].hex()
 TOTAL_SUPPLY = "0x18160ddd"
 OPEN_MINT_BPS = "0x" + keccak(text="OPEN_MINT_BPS()")[:4].hex()
+TOTAL_SUPPLY_CEILING = "0x" + keccak(text="TOTAL_SUPPLY_CEILING()")[:4].hex()
 ACTIVE_POSITION_COUNT = "0x" + keccak(text="activePositionCount(address)")[:4].hex()
 FEE_POLICY = "0x" + keccak(text="feePolicy()")[:4].hex()
 MIN_FEE_PIPS = "0x" + keccak(text="MIN_FEE_PIPS()")[:4].hex()
@@ -258,9 +263,9 @@ def sequential_mints(q_supply: int) -> tuple[int, int, int]:
     supply = q_supply
     mints: list[int] = []
     for _ in range(3):
-        minted = supply // 100  # Q.OPEN_MINT_BPS == 100, checked at startup.
+        minted = supply * MINT_BPS // BPS_DENOMINATOR
         if not 0 < minted <= MAX_UINT128:
-            raise WaitForPrice("1% Q mint is outside uint128 range")
+            raise WaitForPrice("0.1% Q mint is outside uint128 range")
         mints.append(minted)
         supply += minted
     return tuple(mints)  # type: ignore[return-value]
@@ -268,16 +273,25 @@ def sequential_mints(q_supply: int) -> tuple[int, int, int]:
 
 def plan_position(token: str, q: str, x_supply: int, q_supply: int,
                   phantom_quote: int, graduation_threshold: int,
-                  block_time: int, settings: PlanSettings) -> OpenPlan:
+                  block_time: int, settings: PlanSettings,
+                  q_supply_ceiling: int | None = None) -> OpenPlan:
     """Build nested Q-only bands at p0→R*p0, 2R*p0, and 10R*p0."""
     settings.validate()
     token, q = watch.address(token), watch.address(q)
     if token == q or x_supply <= 0 or phantom_quote <= 0 or graduation_threshold <= 0:
         raise WaitForPrice("invalid Pons launch economics")
     mints = sequential_mints(q_supply)
-    # p0 is the first new 1% mint divided by the launched X supply. Every
-    # ratio below uses atomic units, the exact units v4 PoolManager consumes.
-    p_num, p_den = mints[0], x_supply
+    # Q checks its ceiling on every mint before the executor can burn unused
+    # inventory. A net-of-burn cap check would therefore admit a reverting open.
+    if q_supply_ceiling is not None and (
+            q_supply_ceiling <= 0 or q_supply + sum(mints) > q_supply_ceiling):
+        raise WaitForPrice("three new Q mints exceed total-supply ceiling")
+    # Keep the prior price policy independently of tranche funding: p0 is a
+    # 1%-of-S reference amount divided by X supply, while each actual new
+    # tranche is only 0.1% of then-current S. Ratios use v4 atomic units.
+    p_num, p_den = q_supply * PRICE_REFERENCE_BPS // BPS_DENOMINATOR, x_supply
+    if p_num == 0:
+        raise WaitForPrice("Q price reference amount is zero")
     r_num = (phantom_quote + graduation_threshold) ** 2
     r_den = phantom_quote ** 2
     quote_is_0 = int(q, 16) < int(token, 16)
@@ -302,7 +316,7 @@ def plan_position(token: str, q: str, x_supply: int, q_supply: int,
         spent = (amount0_ceil(liquidity, lower_sqrt, upper_sqrt) if quote_is_0
                  else amount1_ceil(liquidity, lower_sqrt, upper_sqrt))
         if liquidity == 0 or spent == 0 or spent > target or target > minted:
-            raise WaitForPrice("1% Q mint cannot fund a positive band")
+            raise WaitForPrice("0.1% Q mint cannot fund a positive band")
         lowers.append(lower)
         uppers.append(upper)
         liquidities.append(liquidity)
@@ -371,6 +385,7 @@ class Bindings:
     pons_hook: str
     quoter: str
     depth_guard: str = ZERO
+    total_supply_ceiling: int = 0
 
 
 def verify_bindings(rpc: watch.Rpc, chain_id: int, q: str, guard: str, quoter: str,
@@ -389,8 +404,11 @@ def verify_bindings(rpc: watch.Rpc, chain_id: int, q: str, guard: str, quoter: s
         require_code(rpc, contract, name)
     if read_address(rpc, q, watch.PONS_FACTORY_GETTER) != watch.PONS_FACTORY:
         raise KeeperError("Q has a different Pons factory")
-    if read_uint(rpc, q, OPEN_MINT_BPS, "uint16") != 100:
-        raise KeeperError("Q 1% mint rule differs from planner")
+    if read_uint(rpc, q, OPEN_MINT_BPS, "uint16") != MINT_BPS:
+        raise KeeperError("Q 0.1% mint rule differs from planner")
+    ceiling = read_uint(rpc, q, TOTAL_SUPPLY_CEILING)
+    if ceiling <= 0:
+        raise KeeperError("Q total-supply ceiling is unavailable")
     if (read_address(rpc, executor, CONTROLLER) != q or
             read_address(rpc, executor, QUOTE_TOKEN) != q):
         raise KeeperError("executor controller/Q binding mismatch")
@@ -439,7 +457,7 @@ def verify_bindings(rpc: watch.Rpc, chain_id: int, q: str, guard: str, quoter: s
             raise KeeperError("guard Q/ETH pool settings are invalid")
         pons_hook = read_address(rpc, watch.PONS_FACTORY, MEME_HOOK)
     return Bindings(q, executor, guard, state_view, raw_id.lower(), fee, spacing,
-                    pons_hook, quoter, ZERO)
+                    pons_hook, quoter, ZERO, ceiling)
 
 
 def read_launch(rpc: watch.Rpc, token: str) -> tuple[Any, ...]:
@@ -847,7 +865,8 @@ def make_plan(rpc: watch.Rpc, bindings: Bindings, token: str,
     q_supply = read_uint(snapshot, bindings.q, TOTAL_SUPPLY)
     snapshot_time = latest_block_time(snapshot)
     plan = plan_position(token, bindings.q, x_supply, q_supply,
-                         quote_reserve - real_quote, threshold, snapshot_time, settings)
+                         quote_reserve - real_quote, threshold, snapshot_time, settings,
+                         bindings.total_supply_ceiling or None)
     if watch.block_hash(rpc, anchor_head) != anchor_hash:
         raise WaitForPrice("pinned price block changed during planning")
     if latest_block_time(rpc) - snapshot_time > settings.max_snapshot_age_seconds:

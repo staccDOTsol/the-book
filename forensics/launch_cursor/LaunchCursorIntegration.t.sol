@@ -17,6 +17,8 @@ interface VmOutcome {
     function prank(address) external;
     function recordLogs() external;
     function getRecordedLogs() external returns (Log[] memory);
+    function load(address target, bytes32 slot) external view returns (bytes32);
+    function store(address target, bytes32 slot, bytes32 value) external;
 }
 
 contract MockLaunchFactory {
@@ -274,13 +276,14 @@ contract LaunchCursorIntegrationTest {
         require(attempted && succeeded && executor.active(), "configured open failed");
     }
 
-    function testOpenMintsOnePercentAndBurnsUnusedInOneAttempt() external {
+    function testOpenMintsPointOnePercentAndBurnsUnusedInOneAttempt() external {
         uint256 supplyBefore = quote.totalSupply();
-        uint256 firstMint = supplyBefore / 100;
-        uint256 secondMint = (supplyBefore + firstMint) / 100;
-        uint256 thirdMint = (supplyBefore + firstMint + secondMint) / 100;
+        uint256 firstMint = supplyBefore / 1_000;
+        uint256 secondMint = (supplyBefore + firstMint) / 1_000;
+        uint256 thirdMint = (supplyBefore + firstMint + secondMint) / 1_000;
         _armAndOpen();
-        require(quote.OPEN_MINT_BPS() == 100, "wrong mint fraction");
+        require(quote.OPEN_MINT_BPS() == 10, "wrong mint fraction");
+        require(quote.TOTAL_SUPPLY_CEILING() == 10 * quote.INITIAL_SUPPLY(), "wrong supply ceiling");
         require(executor.lastMintedQuote(0) == firstMint &&
             executor.lastMintedQuote(1) == secondMint &&
             executor.lastMintedQuote(2) == thirdMint, "mints did not compound in order");
@@ -289,6 +292,30 @@ contract LaunchCursorIntegrationTest {
         (bool attempted, bool succeeded) = quote.processNext();
         require(!attempted && !succeeded && quote.totalSupply() == supplyBefore + 3 ether,
             "duplicate open inflated Q");
+    }
+
+    function testSupplyCeilingDefersOpenAndRetrySucceedsAfterHeadroomReturns() external {
+        uint256 supplyBefore = quote.totalSupply();
+        // CursorERC20 stores name, symbol, then totalSupply. Verify that
+        // layout before using the cheatcode to model years of prior opens.
+        bytes32 supplySlot = bytes32(uint256(2));
+        require(uint256(vm.load(address(quote), supplySlot)) == supplyBefore, "unexpected supply slot");
+        uint256 nearCeiling = quote.TOTAL_SUPPLY_CEILING() - 1 ether;
+        vm.store(address(quote), supplySlot, bytes32(nearCeiling));
+        quote.enqueue(X);
+        quote.configureOpen(X, _openPlan());
+        (bool attempted, bool succeeded) = quote.processNext();
+        require(attempted && !succeeded, "ceiling did not defer opening");
+        require(quote.totalSupply() == nearCeiling && quote.balanceOf(address(executor)) == 0,
+            "ceiling failure changed balances");
+        require(quote.pendingEntryCount() == 1, "ceiling failure lost queued launch");
+
+        // A prior exit/burn frees issuance headroom; the same launch retries.
+        vm.store(address(quote), supplySlot, bytes32(supplyBefore));
+        vm.warp(block.timestamp + 30);
+        (attempted, succeeded) = quote.processNext();
+        require(attempted && succeeded, "opening did not retry after headroom returned");
+        require(quote.totalSupply() == supplyBefore + 3 ether, "retry minted the wrong net amount");
     }
 
     function testOpenFailureRollsBackMintAndRetryIssuesOnlyOnce() external {

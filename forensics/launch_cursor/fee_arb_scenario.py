@@ -11,20 +11,29 @@ The route mode only reconciles a caller-supplied same-block quote bundle. It
 does not authenticate RPC responses or execute any transaction.
 
 For this repo's planned bands, R is
-((Pons phantom quote reserve + graduation threshold) / phantom)^2; p0 is
-the first minted Q tranche divided by X supply, not an external market price.
+((Pons phantom quote reserve + graduation threshold) / phantom)^2. The
+illustrative p0 is a fixed 0.01 Q/X band scale, independent of mint size and
+not an external market price.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 from decimal import Decimal, InvalidOperation, localcontext
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
 PIPS = Decimal(1_000_000)
+ILLUSTRATIVE_SUPPLY = Decimal(1_000_000_000)
+ILLUSTRATIVE_MINT_SHARE = Decimal("0.001")
+ILLUSTRATIVE_DEPOSIT_SHARE = Decimal("0.95")
+ILLUSTRATIVE_P0 = Decimal("0.01")
+ILLUSTRATIVE_R = Decimal("12.25")
+ILLUSTRATIVE_EXTERNAL_Q_PER_X = Decimal("0.664713176195")
 
 
 class ScenarioError(ValueError):
@@ -43,6 +52,39 @@ def positive_decimal(value: Any, label: str) -> Decimal:
 
 def _string(number: Decimal) -> str:
     return "0" if number == 0 else format(number, ".18g")
+
+
+def illustrative_mints_and_deposits() -> tuple[list[Decimal], list[Decimal]]:
+    """Sequential 0.1%-of-current-supply mints, then 95% assumed deposits."""
+    supply = ILLUSTRATIVE_SUPPLY
+    mints: list[Decimal] = []
+    for _ in range(3):
+        mint = supply * ILLUSTRATIVE_MINT_SHARE
+        mints.append(mint)
+        supply += mint
+    return mints, [mint * ILLUSTRATIVE_DEPOSIT_SHARE for mint in mints]
+
+
+def illustrative_matrix_rows() -> list[dict[str, str]]:
+    """All 46 fee arms at four external X-price factors, with p0 held fixed."""
+    _, deposits = illustrative_mints_and_deposits()
+    rows: list[dict[str, str]] = []
+    for factor in (Decimal(1), Decimal("0.75"), Decimal("0.5"), Decimal("0.25")):
+        external = ILLUSTRATIVE_EXTERNAL_Q_PER_X * factor
+        for fee_pct in range(5, 51):
+            result = analyze_pool(ILLUSTRATIVE_P0, ILLUSTRATIVE_R, external,
+                                  fee_pct * 10_000, deposits)
+            rows.append({
+                "pons_price_factor": _string(factor),
+                "fee_pct": str(fee_pct),
+                "external_q_per_x": _string(external),
+                "first_marginal_arb": "yes" if Decimal(result["qExtractedTotal"]) > 0 else "no",
+                "optimal_stop_q_per_x": result["poolStopQPerX"],
+                "q_extracted": result["qExtractedTotal"],
+                "x_gross_bought": result["xGrossBoughtExternally"],
+                "issuer_lp_mark_loss_q": result["issuerLPMarkLossQ"],
+            })
+    return rows
 
 
 def analyze_pool(p0: Any, r: Any, external_q_per_x: Any,
@@ -178,8 +220,15 @@ def main() -> int:
     curve.add_argument("--q-deposits", required=True, nargs=3)
     route = sub.add_parser("route", help="reconcile a caller-supplied quote JSON")
     route.add_argument("bundle", type=Path)
+    sub.add_parser("matrix", help="print the fixed illustrative 0.1%% mint matrix as CSV")
     args = parser.parse_args()
     try:
+        if args.mode == "matrix":
+            rows = illustrative_matrix_rows()
+            writer = csv.DictWriter(sys.stdout, fieldnames=list(rows[0]), lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(rows)
+            return 0
         result = (analyze_pool(args.p0, args.r, args.external_q_per_x,
                                args.fee_pips, args.q_deposits)
                   if args.mode == "curve" else

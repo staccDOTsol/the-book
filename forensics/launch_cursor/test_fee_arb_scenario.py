@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from decimal import Decimal
 from pathlib import Path
 import sys
@@ -12,6 +13,28 @@ import fee_arb_scenario as scenario
 
 
 class FeeArbScenarioTests(unittest.TestCase):
+    def test_illustrative_matrix_uses_point_one_percent_without_moving_p0(self):
+        mints, deposits = scenario.illustrative_mints_and_deposits()
+        self.assertEqual(mints, [Decimal("1000000"), Decimal("1001000"),
+                                 Decimal("1002001")])
+        self.assertEqual(deposits, [Decimal("950000"), Decimal("950950"),
+                                    Decimal("951900.95")])
+        self.assertEqual(scenario.ILLUSTRATIVE_P0, Decimal("0.01"))
+        rows = scenario.illustrative_matrix_rows()
+        self.assertEqual(len(rows), 46 * 4)
+        self.assertEqual(rows[0]["fee_pct"], "5")
+        self.assertEqual(rows[45]["fee_pct"], "50")
+        self.assertEqual(rows[46]["pons_price_factor"], "0.75")
+        first = scenario.analyze_pool(scenario.ILLUSTRATIVE_P0,
+                                      scenario.ILLUSTRATIVE_R,
+                                      scenario.ILLUSTRATIVE_EXTERNAL_Q_PER_X,
+                                      50_000, deposits)
+        self.assertEqual(Decimal(first["qDepositedTotal"]),
+                         sum(deposits))
+        with (Path(__file__).resolve().parent /
+              "fee_arb_matrix_illustrative.csv").open(newline="") as handle:
+            self.assertEqual(list(csv.DictReader(handle)), rows)
+
     def test_half_fee_cannot_close_top_band_marginal_gap_at_external_p0(self):
         result = scenario.analyze_pool("1", "2", "1", 500_000, ["1", "1", "1"])
         self.assertEqual(Decimal(result["poolStopQPerX"]), Decimal(2))

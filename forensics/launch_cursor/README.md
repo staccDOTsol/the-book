@@ -22,18 +22,22 @@ while building this prototype.
    ranges. See [the exact formula and tick math](price_keeper.md).
 3. [LaunchCursorToken.sol](LaunchCursorToken.sol) selects one of 46 static fee
    arms (5%, 6%, …, 50%) and, in one atomic open attempt, mints three new Q
-   tranches. Each mint is **1% of Q's then-current total supply**, so the
+   tranches. Each mint is **0.1% of Q's then-current total supply**, so the
    amounts compound sequentially. It passes the three amounts to
    [HooklessLPExecutor.sol](HooklessLPExecutor.sol), which initializes one
    zero-hook X/Q pool and mints three Q-only NFTs. It burns unused newly
    minted Q before the call completes. A failed open rolls the issuance back.
+   A hard ceiling of ten times the initial Q supply rejects an opening that
+   lacks room for all three mints; it remains retryable after later burns.
 4. A direct EOA Q transfer with sufficient gas may trigger one cursor step.
    `Q.processNext()` is the permissionless fallback. The caller pays that
    transaction's gas; internal settlement transfers do not recursively run
    the cursor. An unconfigured or failed launch remains retryable.
 
-The scale is deliberately self-defined: `p0 = first 1% Q mint / X totalSupply`
-in raw token units. The Pons curve contributes the dimensionless multiplier
+The price scale is deliberately separate from the position size:
+`p0 = (1% of current Q supply) / X totalSupply` in raw token units. Reducing
+the actual mint to 0.1% therefore makes each position smaller without moving
+the existing bands tenfold. The Pons curve contributes the dimensionless multiplier
 `R = ((phantom + graduationThreshold) / phantom)²`. The three bands span
 `p0 → R·p0`, `p0 → 2R·p0`, and `p0 → 10R·p0`. The new pool starts beyond
 the widest band so all three NFTs initially hold Q only, for either token
@@ -44,6 +48,14 @@ X/ETH or Q/ETH executable-price gate. The executor no longer binds an
 pool creation. The executor still rejects invalid ranges, an initialized
 PoolKey, an expired plan, or a tranche spend cap above its actual new mint.
 A third party could initialize the chosen PoolKey before the executor.
+
+The ceiling prevents arithmetic exhaustion, but it also limits throughput:
+from 1 billion Q, three 0.1% mints leave about 2.85 million new Q outstanding
+per open if 95% of each mint enters the LP. With no later burns, 42 opens
+would raise supply about 12.7%, and the tenfold ceiling would stop new opens
+after roughly 808. These are conditional calculations, not a launch forecast.
+The 120-minute winddown burns Q that is still in an untouched position; Q
+traded away to an X seller requires value recovered on exit to offset it.
 
 The [fee and band-edge arbitrage scenario](fee_arb_scenario.py) is **under
 test, not implemented in the strategy**. It explores conditional continuous
@@ -128,7 +140,7 @@ for atomic `depositToken(Q)` plus `distributeToken(Q)` in one launcher
 multicall. The locked Q/ETH launch holds Q's initial 1-billion-token supply.
 A bounded owner ETH→Q buy may be needed to bring that pool into active
 liquidity for later cashouts, but **executor Q bought from the market is not
-the source of X/Q opening inventory**. The three new 1% mints fund that
+   the source of X/Q opening inventory**. The three new 0.1% mints fund that
 inventory. Post-launch deployment binds the settlement router, its recipient
 and child adapters, and distinct configurator roles; it does not bind spot
 or executable-depth guards to the executor. Nothing in bootstrap broadcasts
@@ -146,7 +158,7 @@ contract deployment or onchain liveness.
 ## Verification and limits
 
 With Solc 0.8.35, via-IR, and optimizer runs 1, the executor runtime is
-**24,031 bytes** (545 below EIP-170) and Q's runtime is **23,161 bytes**.
+**24,031 bytes** (545 below EIP-170) and Q's runtime is **23,351 bytes**.
 Robinhood fork tests exercise a three-position mint and abort, and a
 three-tranche full cycle through real v4 LP mint/burn and Pons/router
 settlement with synthetic Q/ETH liquidity. A separate fork test exercises

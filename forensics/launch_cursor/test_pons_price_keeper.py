@@ -98,7 +98,8 @@ class KeeperTests(unittest.TestCase):
                 raise AssertionError((method, params))
         with patch.object(keeper, "read_address", side_effect=lambda _rpc, contract, method: table[(contract, method)]), \
              patch.object(keeper, "read_uint", side_effect=lambda _rpc, _contract, method, _type="uint256": {
-                 keeper.OPEN_MINT_BPS: 100,
+                 keeper.OPEN_MINT_BPS: 10,
+                 keeper.TOTAL_SUPPLY_CEILING: 10**28,
                  keeper.MIN_FEE_PIPS: 50_000,
                  keeper.MAX_FEE_PIPS: 500_000,
                  keeper.FEE_STEP_PIPS: 10_000,
@@ -107,6 +108,7 @@ class KeeperTests(unittest.TestCase):
                                            keeper.QUOTER, None)
             self.assertEqual((bound.executor, bound.guard, bound.depth_guard),
                              (EXE, keeper.ZERO, keeper.ZERO))
+            self.assertEqual(bound.total_supply_ceiling, 10**28)
             table[(EXE, keeper.QUOTE_TOKEN)] = X
             with self.assertRaisesRegex(keeper.KeeperError, "controller/Q"):
                 keeper.verify_bindings(Rpc(), 4663, Q_LOW, keeper.ZERO,
@@ -138,7 +140,7 @@ class KeeperTests(unittest.TestCase):
     def test_three_bands_use_p0_and_pons_multiplier_for_both_token_orders(self):
         supply = 10**27
         x_supply = 10**27
-        expected_mints = (10**25, 101 * 10**23, 10201 * 10**21)
+        expected_mints = (10**24, 1001 * 10**21, 1002001 * 10**18)
         for q in (Q_LOW, Q_HIGH):
             with self.subTest(q=q):
                 plan = keeper.plan_position(X, q, x_supply, supply,
@@ -146,6 +148,7 @@ class KeeperTests(unittest.TestCase):
                                             keeper.PlanSettings())
                 self.assertEqual(plan.minted_quote, expected_mints)
                 self.assertEqual(plan.max_quote_in, expected_mints)
+                self.assertEqual(sum(plan.minted_quote), 3003001 * 10**18)
                 self.assertEqual(plan.deadline, 220)
                 self.assertEqual(len(plan.liquidity), 3)
                 for i, multiple in enumerate((1, 2, 10)):
@@ -154,7 +157,8 @@ class KeeperTests(unittest.TestCase):
                     self.assertEqual(plan.tick_lower[i] % 60, 0)
                     self.assertEqual(plan.tick_upper[i] % 60, 0)
                     if plan.quote_is_0:
-                        # Reciprocal X/Q: p0=.01, R=9. Ranges are rounded outward.
+                        # Reciprocal X/Q: p0 remains .01, R=9, despite
+                        # each tranche now minting just 0.1% of Q supply.
                         self.assertLessEqual(lo * lo * multiple * 9,
                                              100 * keeper.Q192)
                         self.assertGreaterEqual(hi * hi, 100 * keeper.Q192)
@@ -178,6 +182,17 @@ class KeeperTests(unittest.TestCase):
                 self.assertEqual(keeper.decode(keeper.CONFIG_TYPES,
                                  keeper.encode(keeper.CONFIG_TYPES, plan.abi_config()))[1],
                                  plan.liquidity)
+
+    def test_open_reserves_gross_mint_headroom_below_supply_ceiling(self):
+        supply = 10**27
+        mints = keeper.sequential_mints(supply)
+        gross = sum(mints)
+        args = (X, Q_LOW, 10**27, supply, 10**18, 2 * 10**18,
+                100, keeper.PlanSettings())
+        with self.assertRaisesRegex(keeper.WaitForPrice, "supply ceiling"):
+            keeper.plan_position(*args, supply + gross - 1)
+        plan = keeper.plan_position(*args, supply + gross)
+        self.assertEqual(plan.minted_quote, mints)
 
     def test_invalid_static_economics_fail_closed(self):
         args = (X, Q_LOW, 10**27, 10**27, 10**18, 2 * 10**18, 100, keeper.PlanSettings())

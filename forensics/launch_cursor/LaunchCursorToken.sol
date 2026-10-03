@@ -246,7 +246,8 @@ contract LaunchCursorToken is CursorERC20 {
     uint64 public constant OUTCOME_REPORT_WINDOW = 7 days;
     uint256 public constant WIND_DOWN_DELAY = 120 minutes;
     uint256 public constant INITIAL_SUPPLY = 1_000_000_000 ether;
-    uint16 public constant OPEN_MINT_BPS = 100;
+    uint256 public constant TOTAL_SUPPLY_CEILING = 10 * INITIAL_SUPPLY;
+    uint16 public constant OPEN_MINT_BPS = 10;
     uint32 public transferStepGasLimit;
     uint256 public harvestGasPriceCeilingWei;
     bool public automaticEnabled = true;
@@ -404,14 +405,21 @@ contract LaunchCursorToken is CursorERC20 {
         uint256 executorBalanceBefore = balanceOf[address(executor)];
         uint256[3] memory mintedQuote;
         uint256 totalMinted;
+        uint256 simulatedSupply = supplyBefore;
+        if (simulatedSupply > TOTAL_SUPPLY_CEILING) revert BadConfiguration();
         for (uint8 i; i < 3; ++i) {
-            // Each mint sees supply after the prior mint. The executor burns
-            // every tranche's unused amount before this call completes.
-            uint256 amount = totalSupply * OPEN_MINT_BPS / 10_000;
-            if (amount == 0) revert BadConfiguration();
+            // Preflight all three gross mints against the ceiling before
+            // issuing any Q. Each amount sees the prior gross mint.
+            uint256 amount = simulatedSupply * OPEN_MINT_BPS / 10_000;
+            if (amount == 0 || amount > TOTAL_SUPPLY_CEILING - simulatedSupply) {
+                revert BadConfiguration();
+            }
             mintedQuote[i] = amount;
             totalMinted += amount;
-            _update(address(0), address(executor), amount);
+            simulatedSupply += amount;
+        }
+        for (uint8 i; i < 3; ++i) {
+            _update(address(0), address(executor), mintedQuote[i]);
         }
         uint256[3] memory quoteSpent = executor.open(token, feePips, mintedQuote);
         uint256 totalSpent;
@@ -564,7 +572,7 @@ contract LaunchCursorToken is CursorERC20 {
     }
 
     /// @notice Commits a short-lived price, three ranges, liquidity and spend
-    /// caps. Each cap is checked against its own 1%-of-current-supply mint
+    /// caps. Each cap is checked against its own 0.1%-of-current-supply mint
     /// during the later atomic open attempt.
     function configureOpen(address token, bytes calldata encodedPlan)
         external onlyPriceConfigurator whenIdle

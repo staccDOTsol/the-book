@@ -12,13 +12,13 @@ creation is set by trades, not by this calculation.
 
 All amounts in the formula are ERC-20 atomic units. At one recent pinned
 block, read `S = Q.totalSupply()` and `T = X.totalSupply()`. Q's open wrapper
-mints three new tranches before calling the executor:
+mints three new 0.1%-of-then-current-supply tranches before calling the executor:
 
 ```text
-m0 = floor(S / 100)
-m1 = floor((S + m0) / 100)
-m2 = floor((S + m0 + m1) / 100)
-p0 = m0 / T                           Q per X, at the start-equivalent bound
+m0 = floor(S / 1,000)
+m1 = floor((S + m0) / 1,000)
+m2 = floor((S + m0 + m1) / 1,000)
+p0 = floor(S / 100) / T                 Q per X, at the start-equivalent bound
 phantom = curve.getReserves().quoteReserve - curve.realQuoteReserve()
 R = ((phantom + graduationThreshold) / phantom)^2
 band 0: p0 → p0 × R
@@ -34,9 +34,12 @@ factory, token, and native ETH pair from the same record. Pons's official
 show that `getReserves().quoteReserve` includes the phantom amount while
 `realQuoteReserve()` excludes it. The multiplier is the constant-product
 curve's graduation/start marginal-price ratio. It is a *dimensionless shape*
-for X/Q; `p0` supplies a deliberately self-defined Q scale. `p0` does not
-convert Pons's starting ETH/X price into Q, measure fair market value, or
-establish expected profit. The calculator works in Pons phase 0 and phase 2;
+for X/Q; `p0` supplies a deliberately self-defined Q scale. The 1% reference
+in `p0` is **only a price-policy numerator**, not Q minted for a position.
+Reducing issuance to 0.1% therefore makes positions thinner without moving
+all three bands tenfold lower. `p0` does not convert Pons's starting ETH/X
+price into Q, measure fair market value, or establish expected profit. The
+calculator works in Pons phase 0 and phase 2;
 phase 1 waits until the graduated pool is created.
 
 For each band, `maxQuoteIn[i] = mi`, and integer v4 liquidity math chooses
@@ -48,7 +51,10 @@ one tick-spacing **below** the widest band's lower tick. If Q is currency1,
 the pool starts one spacing **above** its upper tick. All three positions are
 therefore Q-only at creation. A zero supply, zero phantom reserve, invalid
 factory/curve binding, non-distinct rounded bands, out-of-range tick, or
-tranche too small for positive liquidity produces no configuration.
+tranche too small for positive liquidity produces no configuration. Before
+configuring, the keeper also checks that **all three gross mints** fit beneath
+Q's immutable total-supply ceiling. Unused Q is burned only after all three
+mints, so planning against net post-burn issuance would create a reverting open.
 
 Q computes `mi` again when it opens the pool. Supply can change between the
 keeper's pinned read and execution. If a saved `maxQuoteIn[i]` exceeds the
@@ -101,8 +107,9 @@ positions; the keeper still estimates gas and refuses an estimate over the
 configured cap.
 
 Startup requires the Robinhood chain ID, the Q→executor→settlement-router
-bindings, the canonical v4 PoolManager/PositionManager/StateView, Q's 1% mint
-rule, and a Q-controlled static fee policy with the expected 5%–50% range.
+bindings, the canonical v4 PoolManager/PositionManager/StateView, Q's 0.1%
+mint rule and total-supply ceiling, and a Q-controlled static fee policy with
+the expected 5%–50% range.
 The executor creates its X/Q PoolKey with `hooks = address(0)` and the fee
 selected by that policy. The opening planner does not require the old
 `OpenPriceGuard`, `OpenExecutableDepthGuard`, a funded Q/ETH pool, or a Q
