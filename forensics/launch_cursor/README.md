@@ -64,6 +64,11 @@ not authenticate those quotes, choose live trade sizes, place an arbitrage
 trade, or change the keeper's three fixed band formulas. A 5–50% fee alone
 does not establish profitable entry or prevent arbitrage against a
 mispriced X/Q pool.
+The [pinned Robinhood route counterfactual](point_one_percent_route_fork.md)
+tests a locally launched Q/ETH pool, a Pons X buy, X/Q and Q/ETH swaps, and
+three timed exits. Its one sampled rational route gives developer wallet cash
+below strategy-paid gas; an untouched pool has zero payout and still costs
+gas. It is one fork state, not an expected-return estimate.
 
 ## Observation, exits, and interim fees
 
