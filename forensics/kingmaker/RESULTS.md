@@ -2,7 +2,19 @@
 
 Definitions were fixed in [DEFINITIONS.md](DEFINITIONS.md) before outcomes were computed. Reports: `.local/kingmaker/pons-report-early{180,600,1800}.txt`, `rig-lp-report-H{600,3600,21600}.txt`, `pumpfun-report.txt`.
 
-## Status after adversarial review (read this first)
+## Primary result: matched on the state before the rig arrived, replicated (`risk_set.py`, Amendment 5)
+
+| Test | Treated | Graduate | Matched controls | Effect, 95% [creator-clustered] | p |
+|---|---|---|---|---|---|
+| Main window, held-out half, frozen rigs | 249 | 12.0% | 5.6% | +6.4 [1.6, 11.2] | 0.004 |
+| Untouched holdout (Sept 13–27), frozen rig list | 1,180 | 13.4% | 10.0% | +3.4 [0.9, 6.0] | 0.003 |
+| Holdout second half, rule re-applied (47 rigs) | 788 | 12.7% | 7.6% | +5.1 [2.1, 8.1] | 0.0002 |
+
+- **Superseded checkpoint design**: it matched on progress measured *after* the rig's first add, a post-treatment variable. Its results, including the holdout ones, are in the table below and in paper Appendix B.
+- **Repeat adjustment** (`cluster_stats.py`): checkpoint results at 10 min and 6 h survive clustering by creator and by rig, and Holm correction. The 1 h checkpoint fails.
+- **Paper**: [`paper/kingmakers/manuscript.pdf`](../../paper/kingmakers/manuscript.pdf).
+
+## Status after adversarial review (superseded in part by the result above)
 
 The results below are strong associations, not proof of the four points.
 
