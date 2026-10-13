@@ -9,7 +9,12 @@ into a separate directory, then run:
   KINGMAKER_DATA=.local/kingmaker-fresh python confirm_fresh.py
 
 Only launches after the freeze timestamp and at least 24 h before the new head are tested.
+
+--holdout: test every launch in an untouched earlier window instead (collected with
+collect_pons.py --end-days-ago). Two tests are run there: the frozen rig list, unchanged, and the
+frozen rule re-applied (rigs re-derived on the window's first half, tested on its second half).
 """
+import sys
 import json
 import math
 import random
@@ -26,14 +31,37 @@ def main():
     head_ts = json.loads((ap.DATA / "pons-launches.json").read_text())["meta"]["headTs"]
     rigs = set(FROZEN["rigs"])
     math_key = tuple(FROZEN["curveMath"])
-    test = [r for r in rows if FROZEN["testLaunchesAfterTs"] < r["ts"] <= head_ts - ap.DAY]
     side = json.loads((ap.DATA / "side-lp.json").read_text())
     adds = defaultdict(list)
     for e in side["liquidity"]:
         p = side["pools"].get(e["pool"])
         if p and int(e["delta"]) > 0:
             adds[p["token"]].append((e["ts"], e["from"]))
+    if "--holdout" in sys.argv:
+        window = sorted((r for r in rows if r["ts"] <= head_ts - ap.DAY), key=lambda r: r["ts"])
+        print(f"HOLDOUT window: {len(window)} launches, none used in any earlier result")
+        run(window, rigs, math_key, adds, "frozen rig list, unchanged, on the whole holdout window")
+        first, second = window[:len(window) // 2], window[len(window) // 2:]
+        first_tokens = {r["token"]: r for r in first}
+        by_actor = defaultdict(set)
+        for tok, evs in adds.items():
+            r = first_tokens.get(tok)
+            if r:
+                for ts, a in evs:
+                    if ts - r["ts"] <= ap.DAY:
+                        by_actor[a].add(tok)
+        rule_rigs = {a for a, t in by_actor.items() if len(t) >= FROZEN["rules"]["rigMinFirstHalfLaunches"]}
+        print(f"\nfrozen rule re-applied: {len(rule_rigs)} rigs from the holdout's first half "
+              f"({len(rule_rigs & rigs)} also on the frozen list)")
+        run(second, rule_rigs, math_key, adds, "frozen rule, rigs re-derived, tested on holdout second half")
+        return
+    test = [r for r in rows if FROZEN["testLaunchesAfterTs"] < r["ts"] <= head_ts - ap.DAY]
     print(f"fresh launches tested: {len(test)} (after freeze ts {FROZEN['testLaunchesAfterTs']}); frozen rigs {len(rigs)}")
+    run(test, rigs, math_key, adds, "frozen rig list on post-freeze launches")
+
+
+def run(test, rigs, math_key, adds, label):
+    print(f"\n### {label}")
     for H in FROZEN["rules"]["checkpointsSec"]:
         sample = []
         for r in test:

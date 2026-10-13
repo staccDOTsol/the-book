@@ -109,9 +109,12 @@ def block_at(ts: int, lo: int, hi: int) -> int:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     days = float(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 14.0
-    head = int(call("eth_blockNumber", []), 16)
-    head_ts = block_ts(head)
-    deployed = deploy_block(head)
+    # --end-days-ago N: end the window N days before the chain head (an untouched holdout period).
+    end_ago = float(sys.argv[sys.argv.index("--end-days-ago") + 1]) if "--end-days-ago" in sys.argv else 0.0
+    chain_head = int(call("eth_blockNumber", []), 16)
+    deployed = deploy_block(chain_head)
+    head_ts = block_ts(chain_head) - int(end_ago * 86400)
+    head = block_at(head_ts, deployed, chain_head) if end_ago else chain_head
     start = block_at(head_ts - int((days + 1) * 86400), deployed, head)
     launch_end = block_at(head_ts - 86400, start, head)
     print(f"factory deployed {deployed}; launches {start}..{launch_end}; trades to head {head}", flush=True)
@@ -149,8 +152,7 @@ def main() -> None:
     print(f"curve events: {len(trades)}", flush=True)
 
     traded = sorted({t["curve"] for t in trades})
-    sels = {sig[:-2]: "0x" + keccak(sig.encode()).hex()[:8] for sig in GETTERS
-            if sig not in ("pairToken()", "graduationThreshold()")}
+    sels = {sig[:-2]: "0x" + keccak(sig.encode()).hex()[:8] for sig in GETTERS if sig != "pairToken()"}
     jobs = [(c, k, v) for c in traded for k, v in sels.items()]
 
     def batch(chunk):
@@ -170,6 +172,8 @@ def main() -> None:
         for part in ex.map(batch, [jobs[i:i + 50] for i in range(0, len(jobs), 50)]):
             for c, k, v in part:
                 row = curves[c]
+                if k == "graduationThreshold":
+                    k = "graduationThresholdCall"  # TokenLaunched data word 1 is not the threshold
                 row[k] = ("0x" + v[-40:]) if k == "deployer" else (
                     bool(int(v, 16)) if k == "graduated" else int(v, 16))
     print(f"immutables for {len(traded)} traded curves", flush=True)

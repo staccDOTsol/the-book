@@ -93,3 +93,24 @@ Amendments 1–3 measured blessing as early curve buying. The author's claim is 
   - **Outcome**: graduation in (H, 24 h]. Secondary: highest buy price after H at least 5× the last buy price before H.
 - **Controls**: identical curve math (as before) and early retail demand by H (retail buyer count and ETH), matched one-to-one.
 - **Drain (next stage)**: rig LP add and remove amounts from receipts. The claim predicts rigs stay flat while retail pays.
+
+## Amendment 5: match on the state before the rig arrived (added before this test was run)
+
+The checkpoint tests matched on curve progress measured at the checkpoint, which falls after the rig's first liquidity add. If rig liquidity draws buyers, that conditions on a consequence of the treatment and biases the effect toward zero. Corrected design, on launches with identical curve math:
+
+- **Age grid** G (s after launch): 60, 180, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200.
+- **Window**: for each consecutive pair (g, g′) in G.
+  - **Treated**: the first rig liquidity add falls in (g, g′].
+  - **Controls**: no rig add by g′.
+  - **Both groups**: not graduated by g′, and at least 3 retail buyers by g.
+- **Covariates, all measured at g (before treatment)**: curve progress (net ETH ÷ 4.2), retail buyer count, and creator buy.
+- **Matching**: each treated launch to its nearest control in the same window.
+- **Outcome**: graduation after g′, within 24 h of launch.
+- **Estimate**: the treated-minus-control difference pooled over windows, resampled by creator 10,000 times.
+
+Run unchanged on:
+1. The held-out half, with the frozen rig list.
+2. The untouched holdout window, with the frozen rig list.
+3. The holdout's second half, with rigs re-derived by the frozen rule.
+
+The checkpoint and holdout results already computed are reported as they are, alongside this.
