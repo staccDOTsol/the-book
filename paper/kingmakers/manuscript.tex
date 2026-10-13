@@ -1,0 +1,219 @@
+\documentclass{ledger}
+\usepackage{booktabs,array,xurl}
+\emergencystretch=3em
+\AtBeginDocument{\urlstyle{same}}
+\newcommand{\thefirstpagenum}{1}
+\newcommand{\thelastpagenum}{draft}
+\newcommand{\theyear}{2026}
+\newcommand{\thevol}{draft}
+\newcommand{\thedoi}{No DOI assigned}
+\newcommand{\ledgerpages}{manuscript submission}
+\newcommand{\n}[1]{\textsuperscript{#1}}
+\hypersetup{pdfauthor={Jarett Dunn},pdftitle={Kingmakers: Liquidity Rigs and Which Identical Charts Run}}
+\title{Kingmakers: Liquidity Rigs and Which Identical Charts Run}
+\author{Jarett Dunn\thanks{Independent researcher. Corresponding author: primary \href{mailto:jarett@zeroknows.ai}{jarett@zeroknows.ai}; backup \href{mailto:jarettrsdunn@gmail.com}{jarettrsdunn@gmail.com}.}}
+\pagestyle{pagemain}
+\pretitle{\centering\selectfont RESEARCH ARTICLE\par\fontsize{24pt}{28pt}\selectfont}
+\begin{document}
+\maketitle
+\thispagestyle{pagefirst}
+\begin{abstract}
+On the Pons launchpad on Robinhood Chain, launches that share four curve parameters trade on identical bonding-curve mathematics, so the curve cannot explain why one chart runs and another does not. We test whether liquidity rigs, wallets that add liquidity to side pools across many new tokens, select which identical charts run. From 45,770 launches, 2.67 million curve trades and 131,156 side-pool liquidity additions, we identify 259 rigs on the first half of launches, freeze them, and test the second half. Matching each chart to one in the same curve state, with the same retail participation, just before the rig arrived, rig liquidity raises graduation from 5.6\% to 12.0\% (+6.4 points, 95\% interval 1.6 to 11.2, clustered by creator). The effect replicates in an untouched earlier window of 181,768 launches, with the frozen rig list (10.0\% to 13.4\%) and with rigs re-derived by the frozen rule (7.6\% to 12.7\%). Across 153 graduated charts, rigs finish flat under every exit order while non-bot traders lose 42 to 161 ETH, which accrues to fees, creator tax and locked liquidity. Within identical mathematics, which charts run depends on whether rigs choose them.
+\begin{keywords}
+\item bonding curves
+\item liquidity provision
+\item market manipulation
+\item launchpads
+\item automated market makers
+\item causal inference
+\end{keywords}
+\end{abstract}
+
+\section{Introduction}\label{introduction}
+
+A memecoin launchpad sells every new token on the same bonding curve. Two launches with the same curve parameters face the same price function: the same ETH buys the same number of tokens at the same point on the curve, and both graduate to an exchange pool at the same reserve threshold. If one chart runs and the other does not, the difference cannot be in the curve. This paper asks where it is.
+
+The claim under test is that the difference is \emph{kingmaking}: a small, recurring set of actors, specific but not named, chooses which charts run, and the charts they choose run at the expense of the traders who follow them. We use ``kingmaking'' for selection of winners by a recurring coalition rather than by the market mechanism. The actors here are \emph{liquidity rigs}: wallets that add liquidity to side pools, Uniswap v4 and v3 pools on a launch token outside the launchpad's own pool, across hundreds of new tokens. Their liquidity is the blessing. We test four propositions: (1) specific, unnamed actors bless charts; (2) blessed charts run; (3) the run drains retail traders while the blessing actors stay flat; and (4) charts with identical mathematics that are not blessed run less, so the difference is not mathematical.
+
+The setting removes the usual confound. Most studies of token manipulation compare tokens that differ in many ways at once.\n{8--11} On Pons, 12,871 traded launches in our main window share exactly the same curve parameters, read from each curve contract. Within that group the price function is fixed, and the remaining variation is in who trades and who supplies liquidity. Every curve trade names its receiving wallet, every side-pool liquidity change can be attributed to its transaction sender, and every trade after graduation can be followed by sender. The full lifecycle of each chart is on-chain.
+
+We make the test as hard to game as we could. The rule that defines a rig was written down before outcomes were computed, the rig list is built only from the first half of launches, and the test uses the second half. When an adversarial review showed that our first matching design conditioned on a consequence of the treatment, we recorded a corrected design before running it, and then ran it unchanged on an earlier two-week window of 181,768 launches that no previous result had touched.\n{5,6} All amendments and all superseded results are reported.
+
+This paper replaces our earlier submission, which measured opening-price dispersion and chart provenance but did not test a claim about actors.\n{18} The contribution here is not new AMM mechanics. It is an estimate, replicated out of sample, of how much a specific coalition's liquidity changes which identical charts run, and a full accounting of who pays.
+
+\section{Setting and definitions}\label{setting}
+
+\subsection{The Pons bonding curve}
+
+Each Pons V2 launch deploys a constant-product bonding curve whose price is set by four immutables: a virtual quote reserve (\texttt{phantomQuote}), a trade fee, a creator tax, and a graduation threshold.\n{1,2} Fee and tax are charged on the ETH leg of every buy and sell. When net ETH on the curve reaches the threshold, the curve graduates: its reserves seed a full-range Uniswap v4 pool with the Pons hook, and that position is locked.\n{1} In our main window 12,871 traded launches share \texttt{phantomQuote} 1.68 ETH, fee 100 basis points, creator tax 200 basis points and graduation threshold 4.2 ETH, each read from the curve by \texttt{eth\_call}. We call these launches \emph{identical-math} launches. For them, graduation is a deterministic function of net ETH bought; we define \emph{curve progress} as net ETH on the curve divided by 4.2.
+
+\subsection{Rigs, blessing and retail}
+
+A \emph{side pool} is a Uniswap v4 pool on PoolManager \texttt{0x8366\ldots0951} with the launch token as one currency and a hook other than the Pons hook, or a Uniswap v3 pool containing the token.\n{3} A \emph{liquidity add} is a v4 \texttt{ModifyLiquidity} event with positive liquidity delta, or a v3 \texttt{Mint}. The \emph{LP actor} is the adding transaction's sender (\texttt{tx.from}); shared contracts such as the v4 PositionManager are never actors.\n{4} A \emph{rig} is an LP actor that added side-pool liquidity on at least five distinct first-half launches within 24 hours of each launch. The rule uses no outcomes. A chart is \emph{blessed} once a rig adds side-pool liquidity on it.
+
+A chart \emph{runs} if its curve graduates within 24 hours of launch. \emph{Retail} is every wallet that is not the creator, not a rig, not on the early-buyer list of Appendix~A, and not a high-frequency wallet, defined as any wallet trading more than ten distinct launches in the window. That threshold was fixed before the drain analysis was run.
+
+\section{Data}\label{data}
+
+All data come from a single Robinhood Chain (chain 4663) JSON-RPC provider whose logs carry block timestamps. The main window covers launches from 28 September 2026 17:45 UTC to 12 October 2026 17:44 UTC (blocks 74,986,765 to 86,859,346), with trades followed to block 87,700,165 on 13 October. It contains 58,430 launches from factory \texttt{0x7ed5\ldots ec7e}, of which 45,770 are ETH-quoted and 40,113 traded; 2,671,304 curve events (\texttt{CurveBuy}, \texttt{CurveSell}, \texttt{CurveCompleted}); 11,366 v4 and 56 v3 side pools with 299,699 liquidity events, 131,156 of them positive adds, each joined to its transaction sender; 501,367 side-pool swaps; and, for the 153 held-out launches that graduated, 523,043 swaps in their graduated pools, each joined to its sender.
+
+The holdout window covers launches from 13 September 2026 20:13 UTC to 27 September 2026 20:13 UTC (blocks 62,231,755 to 74,216,090), with trades followed to 28 September 20:13 UTC. It contains 181,768 launches, 7,502,056 curve events and 33,838 v4 and 86 v3 side pools with 249,494 positive adds. Its 36,023 launches with the frozen identical curve math are the holdout test set. No launch appears in both windows, and no result in this paper was computed on the holdout before the frozen rules were applied to it.
+
+Collectors, analysis code, the definitions file with its amendment history and the frozen rig list with SHA-256 hashes of every source file are public.\n{5,6} Raw archives are large (3.2 GB for holdout curve trades) and are regenerable from public RPC with the published collectors.
+
+\section{Design}\label{design}
+
+\subsection{Held-out split and holdout window}
+
+Main-window launches are sorted by time. Rigs are built from the first half (22,885 launches) and frozen; all tests use the second half. The frozen rig list, the curve-math key and the test rules were then applied unchanged to the holdout window. As a second replication, the frozen \emph{rule} was re-applied inside the holdout: rigs re-derived from its first half and tested on its second half.
+
+\subsection{Risk-set matching on the state before the rig arrives}
+
+Rigs do not bless at random; they may arrive on charts that are already moving. The comparison must therefore hold the chart's state fixed at the moment just before blessing. We use risk-set matching.\n{15} On an age grid of 1, 3, 5, 10, 15, 30, 60, 120, 240, 360 and 720 minutes after launch, each consecutive window $(g, g']$ defines a risk set. A launch is \emph{treated} in that window if its first rig add falls in $(g, g']$, and a \emph{control} if no rig has added by $g'$. Both must be ungraduated at $g'$ and have at least three retail buyers by $g$. Each treated launch is matched to the nearest control on curve progress, retail buyer count and creator buy, all measured at $g$, before treatment. The outcome is graduation after $g'$ and within 24 hours of launch. Treated-minus-control differences are pooled across windows.
+
+\subsection{Inference}
+
+The same creators and rigs recur across launches, so launches are not independent. Confidence intervals and p-values come from 10,000 cluster-bootstrap resamples of matched differences, with the treated launch's creator as the cluster.\n{17} One-sided p-values are the share of resamples at or below zero. For the superseded checkpoint design (Section~\ref{superseded}) we also report rig-clustered intervals and Holm-adjusted p-values across checkpoints.\n{16}
+
+\subsection{Drain ledger and exit value}
+
+For the 153 held-out launches that graduated, we follow each group's ETH through the curve, the side pools and the graduated pool to the collection head. Side-pool liquidity changes are converted to exact currency amounts with the v4 range formula at the pool's price at that moment; each swap's fee is split across positions in range. Realized ETH is cash received minus cash paid. Tokens a group still holds are valued by simulating their sale into the graduated pool's actual liquidity ranges at the head, net of fee and creator tax. Because an AMM pays earlier sellers more, each group is simulated selling first and selling last. A conservation check reconciles every group's ETH with pool reserves, fees and tax.
+
+\section{Results}\label{results}
+
+\subsection{Who the rigs are}
+
+The rule yields 259 rigs. Only 1,232 of 22,885 first-half launches (5.4\%) received any side-pool liquidity within 24 hours, so rig liquidity is selective. The ten largest rigs are externally owned accounts with between 649 and 66,020 transactions each. All add liquidity through the official Uniswap v4 PositionManager, use no hook, and set static fees of 79\% to 99\%, the high-fee tiers documented in our earlier record.\n{19} The three largest added side-pool liquidity on 679, 661 and 448 first-half launches. None is a Pons contract or fee recipient. None of the 49 addresses associated with the author is a rig. The actors are specific and persistent, but not identified beyond their addresses.
+
+\subsection{Blessed charts run}
+
+Table~\ref{tab:main} gives the primary result. In the held-out half of the main window, 249 identical-math launches were first blessed inside one of the grid windows. They graduated at 12.0\%, against 5.6\% for controls in the same curve state, with the same retail participation and creator buy, just before the rig arrived. The creator-clustered 95\% interval for the 6.4-point difference excludes zero ($p = 0.004$).
+
+\begin{table}[h]
+\centering\small
+\caption{Rig liquidity and graduation, matched on the state just before the rig arrived (identical curve math). Intervals and p-values from 10,000 creator-clustered bootstrap resamples.}\label{tab:main}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.6cm}rrrrr@{}}
+\toprule
+Test & Treated & Graduate & Matched controls & Effect [95\%] & $p$ \\
+\midrule
+Main window, held-out half, frozen rigs & 249 & 12.0\% & 5.6\% & +6.4 [1.6, 11.2] & 0.004 \\
+Holdout window, frozen rig list & 1,180 & 13.4\% & 10.0\% & +3.4 [0.9, 6.0] & 0.003 \\
+Holdout second half, rule re-applied & 788 & 12.7\% & 7.6\% & +5.1 [2.1, 8.1] & 0.0002 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The effect replicates out of sample. On the untouched holdout window, the frozen list of 259 rigs blessed 1,180 identical-math launches, which graduated at 13.4\% against 10.0\% for matched controls ($p = 0.003$). Re-applying the frozen rule inside the holdout produced 47 rigs, 17 of them on the frozen list; their blessings raised graduation from 7.6\% to 12.7\% ($p = 0.0002$). Across the three tests the effect is 3.4 to 6.4 percentage points, a 1.3- to 2.1-fold increase in the chance of graduating, at identical mathematics and identical pre-blessing state.
+
+\subsection{Other charts}\label{others}
+
+Unmatched, the contrast is far larger. In the holdout, identical-math launches with at least three retail buyers that a rig had blessed by 10 minutes graduated at 9.1\%, against 0.96\% for the rest (Fisher $p < 10^{-46}$); at six hours the rates are 2.1\% and 0.07\%. In the main window, at six hours, 8 of 238 blessed launches graduated and none of 2,808 unblessed ones did. Most of this raw gap reflects where rigs choose to arrive: blessed charts are further along the curve when blessed. The matched estimates in Table~\ref{tab:main} are what remains after holding that state fixed. Unblessed charts in the same state do sometimes run, at 5.6\% to 10.0\%; blessed charts run 1.3 to 2.1 times as often.
+
+\subsection{The superseded checkpoint design}\label{superseded}
+
+Before the risk-set design, we compared charts blessed by a fixed checkpoint (10 minutes, 1 hour, 6 hours) with unblessed charts matched on curve progress \emph{at the checkpoint}. In the main window that design gave +8.3 points at 10 minutes (creator-clustered 95\% interval 3.2 to 14.0, Holm-adjusted $p = 0.002$), $-0.9$ points at 1 hour (interval $-4.5$ to 2.7), and +3.4 points at 6 hours (Holm $p = 0.0006$). On the holdout its results moved between checkpoints. Progress at the checkpoint is measured after the rig's first add, so if rig liquidity draws buyers the design subtracts part of the effect it is meant to estimate. We recorded the risk-set design as a correction before running it and report the checkpoint results in full in Appendix~B.
+
+\subsection{Who pays}
+
+Table~\ref{tab:drain} follows every group through the full lifecycle of the 153 held-out launches that graduated.
+
+\begin{table}[h]
+\centering\small
+\caption{Lifecycle ETH by group for 153 graduated held-out launches: curve, side pools and graduated pool, to 13 October 2026. Exit value simulates selling all remaining tokens into each graduated pool's actual liquidity, last and first.}\label{tab:drain}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.4cm}rrr@{}}
+\toprule
+Group & Realized ETH & Exit value of tokens held & Net if they exit \\
+\midrule
+Retail (non-bot) & $-218.29$ & 56.93 to 176.73 & $-161.36$ to $-41.55$ \\
+High-frequency wallets (8,517) & $-123.20$ & 21.09 to 80.57 & $-102.11$ to $-42.63$ \\
+Early-buyer list (Appendix A) & $-48.03$ & 29.31 to 62.39 & $-18.72$ to $+14.36$ \\
+Creators, before 42.98 ETH tax & $-68.26$ & 18.41 to 45.65 & $-49.85$ to $-22.61$ \\
+Rigs & $-0.08$ & 0.02 & $-0.06$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Rigs finish flat under every exit order. Over the same launches, their side-pool positions netted $-0.02$ ETH once still-open liquidity is counted: a short token position worth $-2.50$ ETH is offset by $+2.55$ ETH of open side-pool inventory. In their first 24 hours their positions were not flat in tokens. They deposited 145.3 ETH of value and ended with 60\% more tokens than they put in, absorbing sellers' tokens, for a value loss of 3.7\% after 4.5 ETH of fees. Rigs are not the winners of the charts they bless.
+
+Retail is the largest loser: 218 ETH out of pocket, of which at most 177 ETH could be recovered by selling into the graduated pools, and only if retail sold before everyone else. The 153 graduated pools held 374.75 ETH at the head, against a combined marked value of 2,872 ETH for every group's remaining tokens. Retail's loss does not appear as profit in any blessing group. It accrues to curve fees (26.43 ETH), creator tax (42.98 ETH), side-pool traders (9.54 ETH) and liquidity locked in the graduated pools. The ledger balances to within 4.15 ETH, the residual being side-pool reserves.
+
+\section{Discussion}\label{discussion}
+
+\paragraph{What the evidence shows.} Within identical curve mathematics and identical pre-blessing state, rig liquidity raises the chance that a chart graduates by 3.4 to 6.4 points, and the estimate holds on launches that did not exist in the data used to define the rigs. The actors are a small, persistent set of high-frequency wallets running 79--99\% fee pools. They are flat across the full life of the charts they bless, while non-bot traders lose. That is the pattern the kingmaking claim predicts: selection by a coalition, an effect beyond the mechanism, blessing actors who are not the kings, and retail who pays.
+
+\paragraph{Mechanism.} The analysis does not identify how rig liquidity changes outcomes. Two channels fit the data. In the first, side-pool liquidity is a signal that other traders and bots act on. In the second, liquidity placed above the curve price creates arbitrage that buys on the curve and sells into the side pool, pushing curve progress mechanically. The second is a liquidity mechanism, not a curve-parameter mechanism, and is the sense in which price is a function of liquidity. Separating the two requires attributing curve buys to arbitrage routes through side pools, which we leave to future work.
+
+\paragraph{Alternative explanations.} \emph{Anticipation}: rigs may arrive on charts they expect to run for reasons we do not observe. Matching on curve progress, retail participation and creator buy just before arrival removes the observable part of this. Off-chain attention, such as social posts and channel calls, is not observed, and rigs could respond to it. \emph{Selection on outcome}: the rig rule uses no outcomes, and the frozen list predicts graduation in an earlier window it was never fitted to. \emph{Garden of forking paths}: the definition of blessing changed once, from early curve buyers to rig liquidity, at the author's direction, and the matching design changed once, after an adversarial review. Each change was recorded before its test ran (Appendix~A). The holdout replication was run once with frozen code.
+
+\paragraph{What is not shown.} Motive is not observable on-chain, and we do not claim one; ``kingmaking'' here names a measured pattern of selection, effect and incidence. The rigs' wider book, including positions on other chains, off-chain hedges and other addresses they may control, is not observed. Retail's loss is measured only for graduated charts; the 153 graduated pools hold most of the ETH at issue.
+
+\section{Limitations}\label{limitations}
+
+Results come from one launchpad on one chain over four weeks. Identities rest on transaction senders and receiving wallets; a coalition using unlinked addresses is undercounted, which biases rig effects toward zero. Matching uses three observable state variables; unobserved state may remain. The main-window estimate rests on 249 treated launches and about 30 treated graduations. Pons hook fees on graduated-pool swaps are not included in the drain ledger, so retail's loss is understated. All data come from one RPC provider; a second-provider comparison has not been run.
+
+\section{Data and code availability}\label{availability}
+
+Code, the definitions file with all amendments, the frozen rig list and source hashes are in the public repository \texttt{staccDOTsol/the-book}, branch \texttt{kingmaker-test}, directory \texttt{forensics/kingmaker}.\n{5,6} Every table can be regenerated from public Robinhood Chain RPC with the published collectors.
+
+\section{Author involvement, funding, and competing interests}\label{interests}
+
+The author has launched tokens on Pons and has built and operated liquidity and launch tooling on Robinhood Chain and Solana, documented in the same repository. Five launches in the main window were created by author-associated addresses. None of the 49 author-associated addresses is on the rig list or the early-buyer list. The author received no funding for this work.
+
+\section{AI use disclosure}\label{ai}
+
+Data collection code, the statistical analysis and the manuscript text were produced with Claude Opus 5.5 (Anthropic) in Claude Code, at the author's direction. The author is responsible for the content.
+
+\appendix
+
+\section{Amendment history and the early-buyer analysis}\label{appendix-a}
+
+The definitions file was written before any outcome was computed, and changed five times, each before the affected test ran.\n{5} Amendment 1 added a ``contested'' universe of launches with at least three retail buyers, because most of the factory's launches are never bought. Amendments 2 and 3 defined blessing as early curve buying by a recurring wallet list and added a pump.fun test, whose King of the Hill outcome could not be measured because pump.fun no longer exposes it. Amendment 4 redefined blessing as rig liquidity, at the author's direction. Amendment 5 replaced checkpoint matching with risk-set matching.
+
+Under the early-buyer definition, 1,357 wallets that bought early in at least three first-half launches, at least two of which graduated, were present early in 142 of the 145 contested held-out launches that graduated. Matched on early retail demand, launches they bought graduated about twice as often as launches they did not. As a group they ended close to flat on the curve. 556 of them handed tokens directly to one another. Wallets that merely buy early in many launches, without regard to outcomes, did worse than matched launches without them. These results are reported for completeness. The rig-liquidity test in the body is the test of the claim.
+
+\section{Checkpoint design results}\label{appendix-b}
+
+\begin{table}[h]
+\centering\small
+\caption{Superseded checkpoint design: identical-math launches with at least three retail buyers, blessed by the checkpoint versus not, matched on curve progress, retail buyers and creator buy at the checkpoint.}\label{tab:checkpoint}
+\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.9cm}lrrr@{}}
+\toprule
+Window & Check & Raw, blessed vs not & Matched & $p$ \\
+\midrule
+Main, held-out half & 10 min & 16/157 vs 16/2,789 & 10.2\% vs 1.9\% & 0.004 \\
+ & 1 h & 12/222 vs 7/2,805 & 5.4\% vs 6.3\% & 0.76 \\
+ & 6 h & 8/238 vs 0/2,808 & 3.4\% vs 0.0\% & 0.005 \\
+Holdout, frozen list & 10 min & 90/993 vs 119/12,349 & 9.1\% vs 8.6\% & 0.35 \\
+ & 1 h & 62/1,205 vs 24/12,308 & 5.1\% vs 3.3\% & 0.009 \\
+ & 6 h & 26/1,216 vs 9/12,373 & 2.1\% vs 4.3\% & 1.00 \\
+Holdout, rule re-applied & 10 min & 72/739 vs 48/6,687 & 9.7\% vs 7.0\% & 0.024 \\
+ & 1 h & 43/885 vs 10/6,655 & 4.9\% vs 4.0\% & 0.19 \\
+ & 6 h & 22/896 vs 4/6,682 & 2.5\% vs 3.1\% & 0.85 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Notes and references}
+\begin{enumerate}
+\item Pons, V2 documentation: contracts, bonding curve, Uniswap v4 pools and hook fees, accessed 2026-10-13. \url{https://docs.ponsfamily.com/v2}
+\item Pons V2 \texttt{PonsV2BondingCurve} contract: \texttt{CurveBuy}, \texttt{CurveSell}, \texttt{CurveCompleted} events and the \texttt{phantomQuote}, \texttt{feeBps}, \texttt{creatorTaxBps} and \texttt{graduationThreshold} immutables, as deployed by factory \path{0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e} on chain 4663.
+\item Uniswap, v4-core: the PoolManager contract and its Initialize, ModifyLiquidity and Swap events. \url{https://github.com/Uniswap/v4-core}
+\item Uniswap v4 PositionManager on chain 4663, \path{0x58daec3116aae6d93017baaea7749052e8a04fa7} (name ``Uniswap v4 Positions NFT''; its \path{poolManager()} is \path{0x8366a39cc670b4001a1121b8f6a443a643e40951}).
+\item staccDOTsol/the-book, \path{forensics/kingmaker/DEFINITIONS.md} (definitions and Amendments 1--5) and analysis code, branch \path{kingmaker-test}, commits 5311e50 and 9838e55. \url{https://github.com/staccDOTsol/the-book/tree/kingmaker-test/forensics/kingmaker}
+\item staccDOTsol/the-book, \path{forensics/kingmaker/frozen/2026-10-13.json}: frozen rig and early-buyer lists, rules, and SHA-256 hashes of the main-window source files.
+\item Robinhood Chain (chain 4663) public JSON-RPC, logs with block timestamps, collected 2026-10-13.
+\item Xu and Livshits (2019), \emph{The Anatomy of a Cryptocurrency Pump-and-Dump Scheme}, 28th USENIX Security Symposium.
+\item Cernera, La Morgia, Mei and Sassi (2023), \emph{Token Spammers, Rug Pulls, and Sniper Bots: An Analysis of the Ecosystem of Tokens in Ethereum and in the Binance Smart Chain (BNB)}, 32nd USENIX Security Symposium.
+\item Naviglio, Tarantelli and Lillo (2026), \emph{Price manipulation schemes of new crypto-tokens in decentralized exchanges}, EPJ Data Science 15, article 10. \url{https://doi.org/10.1140/epjds/s13688-025-00602-5}
+\item Victor and Weintraud (2021), \emph{Detecting and Quantifying Wash Trading on Decentralized Cryptocurrency Exchanges}, Proceedings of The Web Conference. \url{https://doi.org/10.1145/3442381.3449824}
+\item Lehar, Parlour and Zoican (2024), \emph{Fragmentation and optimal liquidity supply on decentralized exchanges}, arXiv working paper. \url{https://arxiv.org/abs/2307.13772v7}
+\item Zhu et al.\ (2026), \emph{What Drives Liquidity on Decentralized Exchanges? Evidence from the Uniswap Protocol}, FC 2025 International Workshops, LNCS 15753, 78--93. \url{https://doi.org/10.1007/978-3-032-00492-5_6}
+\item Adams, Chan, Markovich and Wan (2025), \emph{Don't Let MEV Slip: The Costs of Swapping on the Uniswap Protocol}, FC 2024, LNCS 14744, 172--191. \url{https://doi.org/10.1007/978-3-031-78676-1_10}
+\item Li, Propert and Rosenbaum (2001), \emph{Balanced risk set matching}, Journal of the American Statistical Association 96(455), 870--882.
+\item Holm (1979), \emph{A simple sequentially rejective multiple test procedure}, Scandinavian Journal of Statistics 6(2), 65--70.
+\item Cameron, Gelbach and Miller (2008), \emph{Bootstrap-based improvements for inference with clustered errors}, Review of Economics and Statistics 90(3), 414--427.
+\item Dunn (2026), \emph{Price: A Function of Liquidity}, manuscript submitted to Ledger, October 2026.
+\item staccDOTsol/the-book, \path{forensics/record/40-onchain-xgasdev.md} and \path{50-cluster.md}: high-fee side pools and the public-router correction.
+\end{enumerate}
+\end{document}
