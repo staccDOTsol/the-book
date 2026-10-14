@@ -41,6 +41,14 @@ We make the test as hard to game as we could. The rule that defines a rig was wr
 
 This paper replaces our earlier submission, which measured opening-price dispersion and chart provenance but did not test a claim about actors.\n{18} The contribution here is not new AMM mechanics. It is an estimate, replicated out of sample, of how much a specific coalition's liquidity changes which identical charts run, and a full accounting of who pays.
 
+\section{Related work and contribution}\label{related}
+
+\paragraph{Liquidity and execution.} The mechanics used here are established. Uniswap's concentrated-liquidity design and the v4 implementation fix how a liquidity range, a fee and a swap produce a price path.\n{3} Zhu et al.\ distinguish total locked value from liquidity concentration and measure fixed-size two-sided quotes, though at 5- and 30-basis-point tiers far from the 79--99\% tiers rigs use here.\n{13} Kirste et al.\ compare AMM market-impact functions,\n{21} and Barbon and Ranaldo compare size-dependent trading costs on centralized and decentralized venues.\n{20} Adams et al.\ separate interface quotes from realized execution and decompose gas, LP fees, price impact and slippage.\n{14} Lehar, Parlour and Zoican study fee-tier fragmentation and endogenous liquidity supply;\n{12} their notion of a high fee does not map onto static 50--99\% fees. Sadeghi et al.\ distinguish LP markouts from realized profit.\n{22} These studies rule out any claim here to new results on price impact, execution cost or LP returns. We use their mechanics; we do not extend them.
+
+\paragraph{Manipulation of new tokens.} A separate literature studies manipulation directly. Xu and Livshits analyze pump-and-dump schemes coordinated in public channels.\n{8} Cernera et al.\ map the token ecosystem on Ethereum and BNB Smart Chain, including token spam, rug pulls and sniper bots.\n{9} Naviglio, Tarantelli and Lillo study price manipulation schemes and sellability for new tokens on decentralized exchanges.\n{10} Victor and Weintraud identify wash trading on decentralized exchanges through account and transaction structures,\n{11} and Cong et al.\ detect wash trading through statistical regularities in exchange-reported volume.\n{23} These studies identify schemes by announced coordination, by token-level outcomes or by circular account structures. None holds the price function fixed across tokens, and none estimates how much a specific, recurring set of actors changes which tokens succeed.
+
+\paragraph{Contribution.} A bonding-curve launchpad makes the price function identical across thousands of tokens. That allows a comparison other settings cannot support: two charts with the same mathematics and the same state, one of which a rig chooses. We contribute (i) an outcome-free definition of a recurring coalition from public liquidity events; (ii) risk-set matching on the state just before the coalition acts, so the estimate is not driven by where rigs choose to arrive; (iii) replication on held-out launches and on an earlier, untouched window, with the rig list frozen; and (iv) a lifecycle ledger that follows each group's ETH from curve to graduated pool, so the question of who pays is answered with cash flows rather than marks. Our earlier submission measured opening-price dispersion and chart provenance but tested no claim about actors.\n{18} This paper does.
+
 \section{Setting and definitions}\label{setting}
 
 \subsection{The Pons bonding curve}
@@ -58,6 +66,8 @@ A chart \emph{runs} if its curve graduates within 24 hours of launch. \emph{Reta
 All data come from a single Robinhood Chain (chain 4663) JSON-RPC provider whose logs carry block timestamps. The main window covers launches from 28 September 2026 17:45 UTC to 12 October 2026 17:44 UTC (blocks 74,986,765 to 86,859,346), with trades followed to block 87,700,165 on 13 October. It contains 58,430 launches from factory \texttt{0x7ed5\ldots ec7e}, of which 45,770 are ETH-quoted and 40,113 traded; 2,671,304 curve events (\texttt{CurveBuy}, \texttt{CurveSell}, \texttt{CurveCompleted}); 11,366 v4 and 56 v3 side pools with 299,699 liquidity events, 131,156 of them positive adds, each joined to its transaction sender; 501,367 side-pool swaps; and, for the 153 held-out launches that graduated, 523,043 swaps in their graduated pools, each joined to its sender.
 
 The holdout window covers launches from 13 September 2026 20:13 UTC to 27 September 2026 20:13 UTC (blocks 62,231,755 to 74,216,090), with trades followed to 28 September 20:13 UTC. It contains 181,768 launches, 7,502,056 curve events and 33,838 v4 and 86 v3 side pools with 249,494 positive adds. Its 36,023 launches with the frozen identical curve math are the holdout test set. No launch appears in both windows, and no result in this paper was computed on the holdout before the frozen rules were applied to it.
+
+Attribution follows one rule per venue. On the curve, a trade belongs to the event's \texttt{recipient} field: the wallet that receives tokens on a buy or ETH on a sell, which is the end user even when a router places the order. In side pools, a liquidity change belongs to its transaction sender, fetched with \texttt{eth\_getTransactionByHash}; the \texttt{sender} field of the event is the shared PositionManager and identifies no one. In graduated pools, a swap belongs to its transaction sender for the same reason. The identical-math key is read from each curve contract by \texttt{eth\_call}. The launch event's second data word, which an earlier draft took for the graduation threshold, is zero for every ETH launch; the threshold is read from the curve instead. Launches with fewer than three retail buyers are excluded from every test, because the factory's output is dominated by launches nobody buys, and comparing chosen charts with untouched ones would be uninformative.
 
 Collectors, analysis code, the definitions file with its amendment history and the frozen rig list with SHA-256 hashes of every source file are public.\n{5,6} Raw archives are large (3.2 GB for holdout curve trades) and are regenerable from public RPC with the published collectors.
 
@@ -104,6 +114,34 @@ Holdout second half, rule re-applied & 788 & 12.7\% & 7.6\% & +5.1 [2.1, 8.1] & 
 \end{table}
 
 The effect replicates out of sample. On the untouched holdout window, the frozen list of 259 rigs blessed 1,180 identical-math launches, which graduated at 13.4\% against 10.0\% for matched controls ($p = 0.003$). Re-applying the frozen rule inside the holdout produced 47 rigs, 17 of them on the frozen list; their blessings raised graduation from 7.6\% to 12.7\% ($p = 0.0002$). Across the three tests the effect is 3.4 to 6.4 percentage points, a 1.3- to 2.1-fold increase in the chance of graduating, at identical mathematics and identical pre-blessing state.
+
+Table~\ref{tab:windows} shows where in a chart's life the effect sits. Most first blessings arrive in the first ten minutes. In the holdout, where counts are large enough to read individual windows, the effect of a first blessing in the first fifteen minutes is close to zero, and the effect of a first blessing between fifteen minutes and twelve hours is positive in every window, between 5.6 and 15.4 points. In the main window, individual windows hold too few launches to read separately. No window in either sample shows a reliably negative effect.
+
+\begin{table}[h]
+\centering\footnotesize
+\caption{Risk-set results by the window in which the first rig liquidity arrived (age after launch). Effect is treated minus matched-control graduation rate.}\label{tab:windows}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{3}{c}{Main, held-out half} & \multicolumn{3}{c}{Holdout, frozen list} \\
+Window (min) & Treated & Graduate & Effect & Treated & Graduate & Effect \\
+\midrule
+1--3 & 70 & 9 & +0.043 & 279 & 34 & +0.011 \\
+3--5 & 20 & 5 & +0.200 & 278 & 28 & +0.043 \\
+5--10 & 53 & 4 & +0.038 & 272 & 34 & $-0.007$ \\
+10--15 & 19 & 3 & +0.158 & 93 & 17 & $-0.011$ \\
+15--30 & 39 & 5 & 0.000 & 128 & 28 & +0.117 \\
+30--60 & 18 & 0 & 0.000 & 65 & 7 & +0.092 \\
+60--120 & 9 & 2 & +0.222 & 26 & 5 & +0.154 \\
+120--240 & 11 & 2 & +0.182 & 18 & 3 & +0.056 \\
+240--360 & 4 & 0 & 0.000 & 9 & 1 & +0.111 \\
+360--720 & 6 & 0 & 0.000 & 12 & 1 & +0.083 \\
+\midrule
+Pooled & 249 & 30 & +0.064 & 1,180 & 158 & +0.034 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result does not depend on the cutoff that defines a rig. With the cutoff at three first-half launches instead of five (571 rigs), the main-window effect is +6.6 points (95\% interval 1.9 to 11.2, $p = 0.004$); at ten launches (63 rigs) it is +6.4 points (1.3 to 11.5, $p = 0.007$). The narrowest list, 63 wallets, gives the same effect.
 
 \subsection{Other charts}\label{others}
 
@@ -157,7 +195,9 @@ Code, the definitions file with all amendments, the frozen rig list and source h
 
 \section{Author involvement, funding, and competing interests}\label{interests}
 
-The author has launched tokens on Pons and has built and operated liquidity and launch tooling on Robinhood Chain and Solana, documented in the same repository. Five launches in the main window were created by author-associated addresses. None of the 49 author-associated addresses is on the rig list or the early-buyer list. The author received no funding for this work.
+Jarett Dunn, also known as staccoverflow, discloses his involvement in the pump.fun exploit and the EXPOSE demonstration described in his earlier work. These connections are disclosed as relevant nonfinancial interests. Dunn states that he is preparing to contest his convictions on approximately twelve grounds that he considers miscarriages of justice.
+
+The author has launched tokens on Pons and has built and operated liquidity and launch tooling on Robinhood Chain and Solana, documented in the same repository. Six main-window launches are associated with the author: five created by an author address and one whose token appears in the author's records. None of the 49 author-associated addresses is on the rig list or the early-buyer list. The author received no funding for this work.
 
 \section{AI use disclosure}\label{ai}
 
@@ -215,5 +255,9 @@ Holdout, rule re-applied & 10 min & 72/739 vs 48/6,687 & 9.7\% vs 7.0\% & 0.024 
 \item Cameron, Gelbach and Miller (2008), \emph{Bootstrap-based improvements for inference with clustered errors}, Review of Economics and Statistics 90(3), 414--427.
 \item Dunn (2026), \emph{Price: A Function of Liquidity}, manuscript submitted to Ledger, October 2026.
 \item staccDOTsol/the-book, \path{forensics/record/40-onchain-xgasdev.md} and \path{50-cluster.md}: high-fee side pools and the public-router correction.
+\item Barbon and Ranaldo (2026), \emph{On the Quality of Cryptocurrency Markets: Centralized vs.\ Decentralized Exchanges}, Management Science. \url{https://doi.org/10.1287/mnsc.2024.07703}
+\item Kirste et al.\ (2024), \emph{On the influence of conventional and automated market makers on market quality in cryptoeconomic systems}, Electronic Markets 34, article 42. \url{https://doi.org/10.1007/s12525-024-00723-1}
+\item Sadeghi et al.\ (2026), \emph{Not All LPs Are Equal: The Active-Passive Gap in Automated Market Maker Liquidity Provision}, arXiv working paper. \url{https://arxiv.org/abs/2609.37963}
+\item Cong, Li, Tang and Yang (2021 draft), \emph{Crypto Wash Trading}, Cowles Foundation working paper. \url{https://cowles.yale.edu/sites/default/files/2022-11/cryptowashtrading040521-crypto-wash-trading.pdf}
 \end{enumerate}
 \end{document}
